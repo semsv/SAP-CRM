@@ -1,0 +1,37 @@
+﻿FUNCTION Z_FM_SSV_GETFILENAME.
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"  IMPORTING
+*"     REFERENCE(IV_FULLFILENAME) TYPE  STRING
+*"  EXPORTING
+*"     REFERENCE(EV_FILENAME) TYPE  TEXT255
+*"----------------------------------------------------------------------
+DATA: filepath type text255,
+      filename type text255.
+
+MOVE IV_FULLFILENAME TO filepath.
+CALL function 'STRING_REVERSE'
+  exporting
+    STRING    = filepath
+    lang      = sy-langu
+  IMPORTING
+    rstring   = filepath
+  EXCEPTIONS
+    too_small = 1
+    OTHERS    = 2.
+
+SPLIT filepath AT '\' INTO : filename filepath .
+
+CALL function 'STRING_REVERSE'
+  exporting
+    STRING    = filename
+    lang      = sy-langu
+  IMPORTING
+    rstring   = filename
+  EXCEPTIONS
+    too_small = 1
+    OTHERS    = 2.
+
+ EV_FILENAME = filename.
+
+ENDFUNCTION.
