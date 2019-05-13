@@ -1,6 +1,6 @@
-FUNCTION ZFM_UTL_SSV_FIND_BP.
+п»їFUNCTION ZFM_UTL_SSV_FIND_BP.
 *"----------------------------------------------------------------------
-*"*"Локальный интерфейс:
+*"*"Р›РѕРєР°Р»СЊРЅС‹Р№ РёРЅС‚РµСЂС„РµР№СЃ:
 *"  TABLES
 *"      CT_CLIENT STRUCTURE  ZTB_PRTNRDAT_OLP
 *"----------------------------------------------------------------------
@@ -34,8 +34,8 @@ data: lt_docdata_olp type standard table of ZTB_DOCDATA_OLP,
            ).
 
     if sy-subrc eq 0.
-      lv_comment = 'Ошибка: С такой фамилией именем отчеством и (датой) местом рождения ДП '.
-      concatenate lv_comment ' уже есть!' into lv_comment.
+      lv_comment = 'РћС€РёР±РєР°: РЎ С‚Р°РєРѕР№ С„Р°РјРёР»РёРµР№ РёРјРµРЅРµРј РѕС‚С‡РµСЃС‚РІРѕРј Рё (РґР°С‚РѕР№) РјРµСЃС‚РѕРј СЂРѕР¶РґРµРЅРёСЏ Р”Рџ '.
+      concatenate lv_comment ' СѓР¶Рµ РµСЃС‚СЊ!' into lv_comment.
       <ls_cli_fiz>-PROCESSED   = '2'.
       <ls_cli_fiz>-ZRESULT_MSG = lv_comment.
     else.
@@ -48,10 +48,10 @@ data: lt_docdata_olp type standard table of ZTB_DOCDATA_OLP,
 
       if sy-subrc eq 0.
         read table lt_but000 into ls_but000 index 1.
-        lv_comment = 'Ошибка: Найден ДП '.
+        lv_comment = 'РћС€РёР±РєР°: РќР°Р№РґРµРЅ Р”Рџ '.
         concatenate lv_comment
                     ls_but000-partner
-                    ' c совпадающими идентификационными данными!'
+                    ' c СЃРѕРІРїР°РґР°СЋС‰РёРјРё РёРґРµРЅС‚РёС„РёРєР°С†РёРѕРЅРЅС‹РјРё РґР°РЅРЅС‹РјРё!'
                into lv_comment.
         <ls_cli_fiz>-PROCESSED   = '2'.
         <ls_cli_fiz>-ZRESULT_MSG = lv_comment.
