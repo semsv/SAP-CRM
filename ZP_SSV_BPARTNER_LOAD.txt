@@ -1,4 +1,4 @@
-*&---------------------------------------------------------------------*
+п»ї*&---------------------------------------------------------------------*
 *& Include ZP_SSV_BPARTNER_LOAD_TOP                          Report ZP_SSV_BPARTNER_LOAD
 *&
 *&---------------------------------------------------------------------*
@@ -24,7 +24,7 @@ AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_fname.
          g_act.
   CALL METHOD cl_gui_frontend_services=>file_open_dialog
     EXPORTING
-      window_title            = 'Файл для загрузки данных'
+      window_title            = 'Р¤Р°Р№Р» РґР»СЏ Р·Р°РіСЂСѓР·РєРё РґР°РЅРЅС‹С…'
       default_extension       = '*.CSV'
       file_filter             = cl_gui_frontend_services=>filetype_all
     CHANGING
@@ -126,7 +126,7 @@ START-OF-SELECTION.
       lv_curr_row_idx = sy-tabix.
       split <fs_table> at ';' into table lt_flddata.
       clear lv_counter_skip.
-* Начало: Проход по каждому полю таблицы csv
+* РќР°С‡Р°Р»Рѕ: РџСЂРѕС…РѕРґ РїРѕ РєР°Р¶РґРѕРјСѓ РїРѕР»СЋ С‚Р°Р±Р»РёС†С‹ csv
       LOOP AT lr_data_descr->components ASSIGNING <ls_component>.
         lv_curr_tab_idx = sy-tabix.
         READ TABLE lt_skip_fld WITH TABLE KEY value = sy-tabix TRANSPORTING NO FIELDS.
@@ -138,17 +138,17 @@ START-OF-SELECTION.
 
         READ TABLE lt_flddata assigning <fs_data> INDEX lv_curr_tab_idx.
         IF sy-subrc <> 0.
-          EXIT. " значения в таблице кончились, дальше идти по полям смысла нет
+          EXIT. " Р·РЅР°С‡РµРЅРёСЏ РІ С‚Р°Р±Р»РёС†Рµ РєРѕРЅС‡РёР»РёСЃСЊ, РґР°Р»СЊС€Рµ РёРґС‚Рё РїРѕ РїРѕР»СЏРј СЃРјС‹СЃР»Р° РЅРµС‚
         ENDIF.
         ASSIGN COMPONENT <ls_component>-name OF STRUCTURE ls_data TO <lv_value>.
-* Форматный контроль
-        lv_curr_tab_idx = sy-tabix. " Номер поля в CSV
+* Р¤РѕСЂРјР°С‚РЅС‹Р№ РєРѕРЅС‚СЂРѕР»СЊ
+        lv_curr_tab_idx = sy-tabix. " РќРѕРјРµСЂ РїРѕР»СЏ РІ CSV
         perform check_format
              using lv_curr_tab_idx
                    <ls_component>-type_kind
                    <ls_component>-name
           changing <fs_data>.
-* Если ошибка то записываем инф и переходим к след записи
+* Р•СЃР»Рё РѕС€РёР±РєР° С‚Рѕ Р·Р°РїРёСЃС‹РІР°РµРј РёРЅС„ Рё РїРµСЂРµС…РѕРґРёРј Рє СЃР»РµРґ Р·Р°РїРёСЃРё
         if lv_fld_index_err is not initial.
           ls_data_inferr-CLIENT      = sy-mandt.
           ls_data_inferr-EXTERNALID  = ls_data-EXTERNAL_ID.
@@ -165,18 +165,18 @@ START-OF-SELECTION.
           lv_record_err_flg = 'X'.
           exit.
         endif.
-* Если ошибок нет то продолжаем обработку полей
+* Р•СЃР»Рё РѕС€РёР±РѕРє РЅРµС‚ С‚Рѕ РїСЂРѕРґРѕР»Р¶Р°РµРј РѕР±СЂР°Р±РѕС‚РєСѓ РїРѕР»РµР№
         <lv_value> = <fs_data>.
       endloop.
-* Конец: Проход по каждому полю таблицы csv
+* РљРѕРЅРµС†: РџСЂРѕС…РѕРґ РїРѕ РєР°Р¶РґРѕРјСѓ РїРѕР»СЋ С‚Р°Р±Р»РёС†С‹ csv
       if lv_record_err_flg eq 'X'.
-* Если взведен флаг ошибки то ничего пока не делаем просто очищаем сам флажок
+* Р•СЃР»Рё РІР·РІРµРґРµРЅ С„Р»Р°Рі РѕС€РёР±РєРё С‚Рѕ РЅРёС‡РµРіРѕ РїРѕРєР° РЅРµ РґРµР»Р°РµРј РїСЂРѕСЃС‚Рѕ РѕС‡РёС‰Р°РµРј СЃР°Рј С„Р»Р°Р¶РѕРє
         clear lv_record_err_flg.
       else.
-* А если ошибок небыло, то
-* Добавляем запись в таблицу основных данных которые предварительно проверены по формату
+* Рђ РµСЃР»Рё РѕС€РёР±РѕРє РЅРµР±С‹Р»Рѕ, С‚Рѕ
+* Р”РѕР±Р°РІР»СЏРµРј Р·Р°РїРёСЃСЊ РІ С‚Р°Р±Р»РёС†Сѓ РѕСЃРЅРѕРІРЅС‹С… РґР°РЅРЅС‹С… РєРѕС‚РѕСЂС‹Рµ РїСЂРµРґРІР°СЂРёС‚РµР»СЊРЅРѕ РїСЂРѕРІРµСЂРµРЅС‹ РїРѕ С„РѕСЂРјР°С‚Сѓ
         append ls_data TO lt_data.
-* Исключаем эту запись если ранее она была в таблице ошибок
+* РСЃРєР»СЋС‡Р°РµРј СЌС‚Сѓ Р·Р°РїРёСЃСЊ РµСЃР»Рё СЂР°РЅРµРµ РѕРЅР° Р±С‹Р»Р° РІ С‚Р°Р±Р»РёС†Рµ РѕС€РёР±РѕРє
         clear ls_data_noterr.
         ls_data_noterr-EXTERNALID = ls_data-EXTERNAL_ID.
         append ls_data_noterr to lt_data_noterr.
@@ -184,28 +184,28 @@ START-OF-SELECTION.
     endloop.
 
    loop at lt_data into ls_data.
-* Проверка заполнено ли самое главное поле
+* РџСЂРѕРІРµСЂРєР° Р·Р°РїРѕР»РЅРµРЅРѕ Р»Рё СЃР°РјРѕРµ РіР»Р°РІРЅРѕРµ РїРѕР»Рµ
      check ls_data-EXTERNAL_ID is not initial.
-* Заполнение основных данных о ДП
+* Р—Р°РїРѕР»РЅРµРЅРёРµ РѕСЃРЅРѕРІРЅС‹С… РґР°РЅРЅС‹С… Рѕ Р”Рџ
      move-corresponding ls_data to ls_main_data.
      ls_main_data-e_mail     = ls_data-SMTP_ADDR.
      ls_main_data-client     = sy-mandt.
      ls_main_data-processed  = ' '.
      append ls_main_data to lt_main_data.
-* Заполнение документов
+* Р—Р°РїРѕР»РЅРµРЅРёРµ РґРѕРєСѓРјРµРЅС‚РѕРІ
      move-corresponding ls_data to ls_docdata_olp.
      ls_docdata_olp-client     = sy-mandt.
      append ls_docdata_olp to lt_docdata_olp.
-* Заполнение документа СНИЛС
+* Р—Р°РїРѕР»РЅРµРЅРёРµ РґРѕРєСѓРјРµРЅС‚Р° РЎРќРР›РЎ
      if ls_data-SNILSDOCNUMBER is not initial.
        clear ls_docdata_olp.
        ls_docdata_olp-client      = sy-mandt.
        ls_docdata_olp-EXTERNAL_ID = ls_data-EXTERNAL_ID.
-       ls_docdata_olp-TYPEDOC     = '83'. " СНИЛС
+       ls_docdata_olp-TYPEDOC     = '83'. " РЎРќРР›РЎ
        ls_docdata_olp-NUMBERDOC   = ls_data-SNILSDOCNUMBER.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
-* Заполнение документа другого типа
+* Р—Р°РїРѕР»РЅРµРЅРёРµ РґРѕРєСѓРјРµРЅС‚Р° РґСЂСѓРіРѕРіРѕ С‚РёРїР°
      if ls_data-OTHERDOC_NUMBER is not initial or
         ls_data-OTHERDOC_TYPE is not initial or
         ls_data-OTHERDOC_SERIAL is not initial.
@@ -221,14 +221,14 @@ START-OF-SELECTION.
        ls_docdata_olp-IDENTRYDATE     = ls_data-OTHERDOC_IDENTRYDATE.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
-* Заполнение таблицы телефонов (Первый телефон он же основной)
+* Р—Р°РїРѕР»РЅРµРЅРёРµ С‚Р°Р±Р»РёС†С‹ С‚РµР»РµС„РѕРЅРѕРІ (РџРµСЂРІС‹Р№ С‚РµР»РµС„РѕРЅ РѕРЅ Р¶Рµ РѕСЃРЅРѕРІРЅРѕР№)
      ls_telnedat_olp-client          = sy-mandt.
      ls_telnedat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
      ls_telnedat_olp-NUMBERROW       = '1'.
      ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_1R.
      ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_1.
      ls_telnedat_olp-COUNTRY         = 'RU'.
-     if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+     if ls_telnedat_olp-comm_notes = 'CO'. "РљРѕРЅС‚Р°РєС‚РЅС‹Р№
        ls_telnedat_olp-r_3_user   = '2'.
      else.
        ls_telnedat_olp-r_3_user   = '1'.
@@ -236,12 +236,12 @@ START-OF-SELECTION.
      ls_telnedat_olp-consnumber     = '1'.
      ls_telnedat_olp-std_no         = 'X'.
      append ls_telnedat_olp to lt_telnedat_olp.
-* Второй телефон
+* Р’С‚РѕСЂРѕР№ С‚РµР»РµС„РѕРЅ
      if ls_data-TELNUMBER_2 is not initial.
        ls_telnedat_olp-NUMBERROW       = '2'.
        ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_2R.
        ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_2.
-       if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+       if ls_telnedat_olp-comm_notes = 'CO'. "РљРѕРЅС‚Р°РєС‚РЅС‹Р№
          ls_telnedat_olp-r_3_user   = '2'.
        else.
          ls_telnedat_olp-r_3_user   = '1'.
@@ -250,12 +250,12 @@ START-OF-SELECTION.
        ls_telnedat_olp-std_no         = ' '.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
-* Третий телефон
+* РўСЂРµС‚РёР№ С‚РµР»РµС„РѕРЅ
      if ls_data-TELNUMBER_3 is not initial.
        ls_telnedat_olp-NUMBERROW       = '3'.
        ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_3R.
        ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_3.
-       if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+       if ls_telnedat_olp-comm_notes = 'CO'. "РљРѕРЅС‚Р°РєС‚РЅС‹Р№
          ls_telnedat_olp-r_3_user   = '2'.
        else.
          ls_telnedat_olp-r_3_user   = '1'.
@@ -264,12 +264,12 @@ START-OF-SELECTION.
        ls_telnedat_olp-std_no         = ' '.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
-* Четвертый телефон
+* Р§РµС‚РІРµСЂС‚С‹Р№ С‚РµР»РµС„РѕРЅ
      if ls_data-TELNUMBER_4 is not initial.
        ls_telnedat_olp-NUMBERROW       = '4'.
        ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_4R.
        ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_4.
-       if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+       if ls_telnedat_olp-comm_notes = 'CO'. "РљРѕРЅС‚Р°РєС‚РЅС‹Р№
          ls_telnedat_olp-r_3_user   = '2'.
        else.
          ls_telnedat_olp-r_3_user   = '1'.
@@ -278,12 +278,12 @@ START-OF-SELECTION.
        ls_telnedat_olp-std_no         = ' '.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
-* Пятый телефон
+* РџСЏС‚С‹Р№ С‚РµР»РµС„РѕРЅ
      if ls_data-TELNUMBER_5 is not initial.
        ls_telnedat_olp-NUMBERROW       = '5'.
        ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_5R.
        ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_5.
-       if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+       if ls_telnedat_olp-comm_notes = 'CO'. "РљРѕРЅС‚Р°РєС‚РЅС‹Р№
          ls_telnedat_olp-r_3_user   = '2'.
        else.
          ls_telnedat_olp-r_3_user   = '1'.
@@ -298,11 +298,11 @@ START-OF-SELECTION.
 
    delete ZTB_PRELOADBPCRD from table lt_data_noterr.
 
-* Вывод данных на экран
-   PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'.  " вывод на экран
-   PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'. " вывод на экран
+* Р’С‹РІРѕРґ РґР°РЅРЅС‹С… РЅР° СЌРєСЂР°РЅ
+   PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'.  " РІС‹РІРѕРґ РЅР° СЌРєСЂР°РЅ
+   PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'. " РІС‹РІРѕРґ РЅР° СЌРєСЂР°РЅ
 
-* Подпрограмма check_format - форматный контроль полей в csv
+* РџРѕРґРїСЂРѕРіСЂР°РјРјР° check_format - С„РѕСЂРјР°С‚РЅС‹Р№ РєРѕРЅС‚СЂРѕР»СЊ РїРѕР»РµР№ РІ csv
 form check_format
   using     i_index     type sytabix
             i_type_kind type abap_typekind
@@ -310,22 +310,22 @@ form check_format
   changing p_value  type string.
   data: lv_value_str type string.
   case i_index.
-   when 10. " Дата рождения
+   when 10. " Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ
    when others.
   endcase.
-* Начало: Проверка обязательности полей
+* РќР°С‡Р°Р»Рѕ: РџСЂРѕРІРµСЂРєР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕСЃС‚Рё РїРѕР»РµР№
   READ TABLE lt_req_fld WITH TABLE KEY value = i_index TRANSPORTING NO FIELDS.
   if sy-subrc eq 0.
     if p_value is initial.
       lv_fld_index_err = i_index.
       lv_value_str     = lv_fld_index_err.
       condense lv_value_str.
-      CONCATENATE 'Незаполнено обязательное поле, номер поля в csv "' lv_value_str '".'
+      CONCATENATE 'РќРµР·Р°РїРѕР»РЅРµРЅРѕ РѕР±СЏР·Р°С‚РµР»СЊРЅРѕРµ РїРѕР»Рµ, РЅРѕРјРµСЂ РїРѕР»СЏ РІ csv "' lv_value_str '".'
              INTO lv_error_txt.
       return.
     endif.
   endif.
-* Конец: Проверка обязательности полей
+* РљРѕРЅРµС†: РџСЂРѕРІРµСЂРєР° РѕР±СЏР·Р°С‚РµР»СЊРЅРѕСЃС‚Рё РїРѕР»РµР№
   case i_type_kind.
     when 'D'.
       lv_value_str = p_value.
@@ -341,9 +341,9 @@ form check_format
       if sy-subrc ne 0.
         lv_fld_index_err = i_index.
         p_value          = lv_value_str.
-        CONCATENATE 'Ошибка преобразования строки "' p_value '"'
+        CONCATENATE 'РћС€РёР±РєР° РїСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёСЏ СЃС‚СЂРѕРєРё "' p_value '"'
                INTO lv_error_txt.
-        CONCATENATE lv_error_txt ' в дату!'
+        CONCATENATE lv_error_txt ' РІ РґР°С‚Сѓ!'
                INTO lv_error_txt.
       endif.
     when 'C'.
@@ -355,18 +355,18 @@ form check_format
         read table lt_maritalstatus with table key CLIENT = sy-mandt MARST = p_value transporting no fields.
         if sy-subrc eq 0.
         else.
-* Если нет значит ошибка формата
+* Р•СЃР»Рё РЅРµС‚ Р·РЅР°С‡РёС‚ РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'РћС€РёР±РєР° С„РѕСЂРјР°С‚Р°, Р·РЅР°С‡РµРЅРёРµ "' p_value '",'
                  INTO lv_error_txt.
-          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+          CONCATENATE lv_error_txt ' РЅРѕРјРµСЂ РїРѕР»СЏ РІ csv "' lv_value_str '".'
                  INTO lv_error_txt.
         endif.
       endif.
       if i_compname eq 'SEX'.
-        return. " Временно отключил контроль для теста потом убрать!!!!
+        return. " Р’СЂРµРјРµРЅРЅРѕ РѕС‚РєР»СЋС‡РёР» РєРѕРЅС‚СЂРѕР»СЊ РґР»СЏ С‚РµСЃС‚Р° РїРѕС‚РѕРј СѓР±СЂР°С‚СЊ!!!!
         data: lt_dd07v TYPE TABLE OF dd07v.
         CALL FUNCTION 'DD_DOMVALUES_GET'
           EXPORTING
@@ -381,18 +381,18 @@ form check_format
         READ TABLE lt_dd07v WITH KEY domvalue_l = p_value transporting no fields.
         if sy-subrc eq 0.
         else.
-* Если нет значит ошибка формата
+* Р•СЃР»Рё РЅРµС‚ Р·РЅР°С‡РёС‚ РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'РћС€РёР±РєР° С„РѕСЂРјР°С‚Р°, Р·РЅР°С‡РµРЅРёРµ "' p_value '",'
                  INTO lv_error_txt.
-          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+          CONCATENATE lv_error_txt ' РЅРѕРјРµСЂ РїРѕР»СЏ РІ csv "' lv_value_str '".'
                  INTO lv_error_txt.
         endif.
       endif.
       if i_compname eq 'FATCASTATUS'.
-        return. " Временно отключил контроль для теста потом убрать!!!!
+        return. " Р’СЂРµРјРµРЅРЅРѕ РѕС‚РєР»СЋС‡РёР» РєРѕРЅС‚СЂРѕР»СЊ РґР»СЏ С‚РµСЃС‚Р° РїРѕС‚РѕРј СѓР±СЂР°С‚СЊ!!!!
         CALL FUNCTION 'DD_DOMVALUES_GET'
           EXPORTING
             domname = 'ZD_FATCA'
@@ -406,13 +406,13 @@ form check_format
         READ TABLE lt_dd07v WITH KEY domvalue_l = p_value transporting no fields.
         if sy-subrc eq 0.
         else.
-* Если нет значит ошибка формата
+* Р•СЃР»Рё РЅРµС‚ Р·РЅР°С‡РёС‚ РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'РћС€РёР±РєР° С„РѕСЂРјР°С‚Р°, Р·РЅР°С‡РµРЅРёРµ "' p_value '",'
                  INTO lv_error_txt.
-          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+          CONCATENATE lv_error_txt ' РЅРѕРјРµСЂ РїРѕР»СЏ РІ csv "' lv_value_str '".'
                  INTO lv_error_txt.
         endif.
       endif.
@@ -422,7 +422,7 @@ form check_format
          i_compname eq 'ADROTHER_COUNTRY'.
         data: lt_nationality type standard table of t005.
         select *
-          into table lt_nationality " Справочник стран
+          into table lt_nationality " РЎРїСЂР°РІРѕС‡РЅРёРє СЃС‚СЂР°РЅ
           from t005.
         clear lv_prev_country.
         check p_value is not initial.
@@ -430,13 +430,13 @@ form check_format
         if sy-subrc eq 0.
           lv_prev_country = p_value.
         else.
-* Если нет значит ошибка формата
+* Р•СЃР»Рё РЅРµС‚ Р·РЅР°С‡РёС‚ РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'РћС€РёР±РєР° С„РѕСЂРјР°С‚Р°, Р·РЅР°С‡РµРЅРёРµ "' p_value '",'
                  INTO lv_error_txt.
-          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+          CONCATENATE lv_error_txt ' РЅРѕРјРµСЂ РїРѕР»СЏ РІ csv "' lv_value_str '".'
                  INTO lv_error_txt.
         endif.
       endif.
@@ -453,13 +453,13 @@ form check_format
         read table lt_phone_type with table key CLIENT = sy-mandt TYPE = p_value transporting no fields.
         if sy-subrc eq 0.
         else.
-* Если нет значит ошибка формата
+* Р•СЃР»Рё РЅРµС‚ Р·РЅР°С‡РёС‚ РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'РћС€РёР±РєР° С„РѕСЂРјР°С‚Р°, Р·РЅР°С‡РµРЅРёРµ "' p_value '",'
                  INTO lv_error_txt.
-          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+          CONCATENATE lv_error_txt ' РЅРѕРјРµСЂ РїРѕР»СЏ РІ csv "' lv_value_str '".'
                  INTO lv_error_txt.
         endif.
       endif.
@@ -475,19 +475,19 @@ form check_format
         read table lt_region with table key MANDT = sy-mandt LAND1 = lv_prev_country BLAND = p_value transporting no fields.
         if sy-subrc eq 0.
         else.
-* Если нет значит ошибка формата
+* Р•СЃР»Рё РЅРµС‚ Р·РЅР°С‡РёС‚ РѕС€РёР±РєР° С„РѕСЂРјР°С‚Р°
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'РћС€РёР±РєР° С„РѕСЂРјР°С‚Р°, Р·РЅР°С‡РµРЅРёРµ "' p_value '",'
                  INTO lv_error_txt.
-          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+          CONCATENATE lv_error_txt ' РЅРѕРјРµСЂ РїРѕР»СЏ РІ csv "' lv_value_str '".'
                  INTO lv_error_txt.
         endif.
       endif.
   endcase.
 endform.
-* Формируем список обязательных полей подпрограммой get_req_fld
+* Р¤РѕСЂРјРёСЂСѓРµРј СЃРїРёСЃРѕРє РѕР±СЏР·Р°С‚РµР»СЊРЅС‹С… РїРѕР»РµР№ РїРѕРґРїСЂРѕРіСЂР°РјРјРѕР№ get_req_fld
 form get_req_fld.
   record_fld_structure-value = 1.
   insert record_fld_structure into table lt_req_fld.
@@ -532,7 +532,7 @@ form get_req_fld.
   record_fld_structure-value = 60.
   insert record_fld_structure into table lt_req_fld.
 endform.
-* Формируем индексы полей в структуре ZSTR_SSV_BPARTNER_LOADER которые просто пропускаем как будто их там и нет
+* Р¤РѕСЂРјРёСЂСѓРµРј РёРЅРґРµРєСЃС‹ РїРѕР»РµР№ РІ СЃС‚СЂСѓРєС‚СѓСЂРµ ZSTR_SSV_BPARTNER_LOADER РєРѕС‚РѕСЂС‹Рµ РїСЂРѕСЃС‚Рѕ РїСЂРѕРїСѓСЃРєР°РµРј РєР°Рє Р±СѓРґС‚Рѕ РёС… С‚Р°Рј Рё РЅРµС‚
 form get_skip_fld.
   record_fld_structure-value = 38.
   insert record_fld_structure into table lt_skip_fld.
