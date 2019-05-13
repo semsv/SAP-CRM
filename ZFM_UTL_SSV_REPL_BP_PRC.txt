@@ -1,0 +1,231 @@
+﻿FUNCTION ZFM_UTL_SSV_REPL_BP_PRC.
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"  IMPORTING
+*"     REFERENCE(IV_PROC_NUM) TYPE  I
+*"     REFERENCE(IV_COMMIT) TYPE  CHAR1 DEFAULT 'X'
+*"     REFERENCE(IV_AUGRP) TYPE  BU_AUGRP DEFAULT 'UBRR'
+*"     REFERENCE(IV_REPL_ABS_FLG) TYPE  CHAR1 DEFAULT ' '
+*"     REFERENCE(IV_REPL_VKL_FLG) TYPE  CHAR1 DEFAULT ' '
+*"     REFERENCE(IV_REPL_TWR_FLG) TYPE  CHAR1 DEFAULT 'X'
+*"     REFERENCE(IV_REPL_EXT_FLG) TYPE  CHAR1 DEFAULT 'X'
+*"     REFERENCE(IV_REPL_EXT_ID) TYPE  TEXT20 DEFAULT 'EXT'
+*"  EXPORTING
+*"     REFERENCE(EV_RESULT) TYPE  STRING
+*"----------------------------------------------------------------------
+
+"Репликация ДП ФЛ
+  DATA: lt_cli_fiz            type hashed table of ZTB_PRTNRDAT_OLP with UNIQUE key CLIENT EXTERNAL_ID,
+        lr_check              TYPE REF TO zl_crm_bp_uiu_save_check,
+        ls_zbut001            TYPE zbut0000000001,
+        lt_zbut001            TYPE TABLE OF zbut0000000001,
+        lt_return             TYPE TABLE OF bapiret2,
+        lt_zbut_new           Type ZBUT0000000001_TB,
+        ls_zbut000_ext        TYPE zbut000_ext,
+        ls_but021_fs          type but021_fs,
+        lt_ZADR               type ZTAB_UTL_DM_MSG_STRING,
+        ls_ZADR               type ZSTR_UTL_DM_MSG_STRING,
+        ls_but020             type but020,
+        ls_adrv               type adrv,
+        ls_adrc               type adrc,
+        ls_adcp               type adcp,
+        lv_fatca              type ZED_FATCA,
+        lt_params             TYPE crmt_name_value_pair_tab,
+        ls_params             TYPE crmt_name_value_pair,
+        lv_str_buf            type string,
+        lt_workedup_phns      type ZTAB_VUZ_CLIENT_FIZ,
+        lv_cntr               type i,
+        lv_commit_rez         type string,
+        lv_max_hits           type i,
+        lv_partner            type bu_partner ,
+        lv_comment            type string value '',
+        lt_lines              TYPE comt_text_lines_t,
+        ls_header             TYPE thead,
+        lv_error              type string
+       ,lr_error              type ref to cx_root
+       ,lr_sql_error          type ref to cx_sy_native_sql_error
+       ,lr_conv_error         type ref to cx_sy_conversion_no_number
+       ,lv_success            Type CRMT_BOOLEAN
+       ,lv_cnt_BUH            type i
+       ,lv_cnt_VKL            type i
+       ,lv_cnt_TWR            type i
+       .
+
+  field-symbols:<ls_cli_fiz>      type ZTB_PRTNRDAT_OLP
+               ,<ls_zbut_new>     Type ZBUT0000000001
+               ,<ls_return>       type bapiret2
+               .
+
+
+  select *
+    appending table lt_cli_fiz[]
+    from ZTB_PRTNRDAT_OLP
+   where PROCESS_NUMBER   = IV_PROC_NUM        " Номер процесса
+     and PROCESSED        = '1'                " 0 - не обработанные, 1 - успешно, 2 - ошибка
+     and ZRES_PARTNER is not null
+     and ZRES_PARTNER <> ' '
+     and ZRES_PARTNER <> '0000000000'.
+
+  if IV_REPL_TWR_FLG eq 'X'.
+  endif.
+  if IV_REPL_ABS_FLG eq 'X'.
+  endif.
+  if IV_REPL_VKL_FLG eq 'X'.
+  endif.
+
+*  return.
+
+  if lt_cli_fiz[] is not initial.
+
+      CALL METHOD ZCL_UTL_DM_UBRR_NAMES=>FORCE_CURRENT_BANK_CONTEXT
+           EXPORTING IV_BUKRS = IV_AUGRP. " 'UBRR' or 'VUZB'
+
+      loop at  lt_cli_fiz[] assigning <ls_cli_fiz>."По списку клиентов реплицируем ДП
+          CLEAR: lt_zbut001[], lt_zbut_new[], lt_return[], ls_zbut001.
+          lv_partner =  <ls_cli_fiz>-ZRES_PARTNER.
+          CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+               EXPORTING INPUT  = lv_partner
+               IMPORTING OUTPUT = lv_partner.
+
+          CREATE OBJECT lr_check.
+          lr_check->gv_from_fm      = 'X'.
+          lr_check->gv_partner      = lv_partner.
+          lr_check->GV_DONT_CONVERT = 'X'.
+          DELETE FROM zbut0000000001_t WHERE partner = lv_partner.
+
+          lv_cnt_BUH = 0.
+          lv_cnt_VKL = 0.
+          lv_cnt_TWR = 0.
+          ls_zbut001-partner = lv_partner.
+
+          if IV_REPL_EXT_FLG eq 'X'.
+            ls_zbut001-zzniuoltpa   = IV_REPL_EXT_ID.
+            ls_zbut001-zzouiuoltpao = IV_REPL_EXT_ID.
+            ls_zbut001-zzuoa        = <ls_cli_fiz>-EXTERNAL_ID.
+            ls_zbut001-ZZAOUUAAUI   = 'X'.
+            modify zbut0000000001 from ls_zbut001.
+            clear ls_zbut001-zzuoa.
+            clear ls_zbut001-ZZAOUUAAUI.
+          endif.
+
+          if <ls_cli_fiz>-ZREP_ABS = ' ' and IV_REPL_ABS_FLG eq 'X'.
+
+              ls_zbut001-zzniuoltpa   = 'BUH'.
+              ls_zbut001-zzouiuoltpao = 'BUH'.
+
+              "Если ДП ВУЗ-а уже был создан в АБС Катюхиным, то реплицировать
+              "в существующего клиента АБС
+              SELECT ZZUOA
+              into ls_zbut001-ZZUOA
+              from zbut0000000001
+              where PARTNER    = lv_partner
+                and ZZNIUOLTPA = 'BUH'
+                and ZZAOUUAAUI = 'X'.
+
+                  APPEND ls_zbut001 TO lt_zbut001.
+                  lv_cnt_BUH = lv_cnt_BUH + 1.
+              ENDSELECT.
+
+              if lv_cnt_BUH = 0. "еще не был реплицирован
+                 APPEND ls_zbut001 TO lt_zbut001.
+              endif.
+          endif." <ls_cli_fiz>-ZREP_ABS is INITIAL.
+          if <ls_cli_fiz>-ZREP_VKL = ' ' and IV_REPL_VKL_FLG eq 'X'.
+              ls_zbut001-zzniuoltpa   = 'VKL'.
+              ls_zbut001-zzouiuoltpao = 'VKL'.
+
+              "Если ДП ВУЗ-а уже был создан в АБС, то реплицировать
+              "в существующего клиента АБС
+              SELECT ZZUOA
+              into ls_zbut001-ZZUOA
+              from zbut0000000001
+              where PARTNER    = lv_partner
+                and ZZNIUOLTPA = 'VKL'
+                and ZZAOUUAAUI = 'X'.
+
+                  APPEND ls_zbut001 TO lt_zbut001.
+                  lv_cnt_VKL = lv_cnt_VKL + 1.
+              ENDSELECT.
+
+              if lv_cnt_VKL = 0. "еще не был реплицирован
+                 APPEND ls_zbut001 TO lt_zbut001.
+              endif.
+          endif."
+          if <ls_cli_fiz>-ZREP_TWR = ' ' and IV_REPL_TWR_FLG eq 'X'.
+              ls_zbut001-zzniuoltpa   = 'TWR'.
+              ls_zbut001-zzouiuoltpao = 'TWR'.
+
+              "Если ДП ВУЗ-а уже был создан в АБС, то реплицировать
+              "в существующего клиента АБС
+              SELECT ZZUOA
+              into ls_zbut001-ZZUOA
+              from zbut0000000001
+              where PARTNER    = lv_partner
+                and ZZNIUOLTPA = 'TWR'
+                and ZZAOUUAAUI = 'X'.
+
+                  APPEND ls_zbut001 TO lt_zbut001.
+                  lv_cnt_TWR = lv_cnt_TWR + 1.
+              ENDSELECT.
+
+              if lv_cnt_TWR = 0. "еще не был реплицирован
+                 APPEND ls_zbut001 TO lt_zbut001.
+              endif.
+          endif."
+
+          MODIFY ZBUT0000000001_T FROM TABLE lt_zbut001.
+          lr_check->save_oltp_fm( IMPORTING ET_ZBUT_NEW = lt_zbut_new[]
+                                  CHANGING  ct_return   = lt_return
+                                ).
+          loop at lt_return[] assigning <ls_return>
+               where TYPE = 'E'.
+                concatenate <ls_cli_fiz>-ZREPLICA_MSG
+                            <ls_return>-MESSAGE
+                into <ls_cli_fiz>-ZREPLICA_MSG
+                separated by space.
+          endloop." at lt_return[] assigning <ls_return>.
+
+          LOOP AT lt_zbut_new[] ASSIGNING <ls_zbut_new>
+               WHERE ZZUOA      is NOT INITIAL
+                 and ZZAOUUAAUI = 'X'.
+              if <ls_zbut_new>-zzniuoltpa = 'BUH'.
+                 <ls_cli_fiz>-ZREP_ABS = <ls_zbut_new>-ZZUOA.
+              endif.
+              if <ls_zbut_new>-zzniuoltpa = 'VKL'.
+                 <ls_cli_fiz>-ZREP_VKL = <ls_zbut_new>-ZZUOA.
+              endif.
+              if <ls_zbut_new>-zzniuoltpa = 'TWR'.
+                 <ls_cli_fiz>-ZREP_TWR = <ls_zbut_new>-ZZUOA.
+              endif.
+          ENDLOOP.
+
+          free lr_check.
+
+*          get time stamp field <ls_cli_fiz>-ztimestamp.
+          <ls_cli_fiz>-ZRESULT_MSG = lv_comment.
+          MODIFY ZTB_PRTNRDAT_OLP from <ls_cli_fiz>.
+*         ------------------------------------
+
+          commit work.
+      endloop."lt_cli_fiz[] assigning <ls_cli_fiz>.
+
+      commit work.
+      EV_RESULT = 'OK'.
+  else.
+      data:lv_str1 TYPE string,
+           lv_str2 TYPE string.
+      lv_str1 = '1'.
+      lv_str2 = IV_PROC_NUM.
+      concatenate 'Не выбрано записей, удовлетворяющих условиям:' 'партия='
+                  lv_str1 ' № процесса=' lv_str2 ' Поле результа пусто'
+             into EV_RESULT
+      separated by space.
+
+      write: EV_RESULT.
+  endif." lt_cli_fiz[] is not initial.
+
+
+
+
+
+ENDFUNCTION.
