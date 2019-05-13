@@ -1,0 +1,76 @@
+﻿*&---------------------------------------------------------------------*
+*& Include ZP_SSV_BPLOAD_PRCSRST_TOP                         Report ZP_SSV_BPLOADOLP_PROCESSED_RST
+*&
+*&---------------------------------------------------------------------*
+
+REPORT   ZP_SSV_BPLOADOLP_PROCESSED_RST.
+TYPE-POOLS: vrm.
+
+selection-screen begin of block file_select with frame title text-100.
+
+  parameters: p_prcsn TYPE ZED_SSV_BPL_PROCESSNUMBER OBLIGATORY.
+  parameters: l_type TYPE CRMT_PROCESS_TYPE_DB AS LISTBOX VISIBLE LENGTH 60 obligatory.
+selection-screen end of block file_select.
+
+" Начало: создаем элемент раскрывающийся список
+data:
+  name        TYPE vrm_id,
+  list        TYPE vrm_values,
+  value       LIKE LINE OF list.
+
+AT SELECTION-SCREEN OUTPUT.
+  name = 'l_type'.
+  value-key = 'ZRST'. value-text = 'Сброс флага'. append value to list.
+  value-key = 'ZDEL'. value-text = 'Удаление портфеля (данных предв загр)'. append value to list.
+
+ CALL FUNCTION 'VRM_SET_VALUES' EXPORTING id = name values = list.
+" Конец: создаем элемент раскрывающийся список
+
+START-OF-SELECTION.
+
+  data:
+    lt_main_data        type standard table of ZTB_PRTNRDAT_OLP.
+  data:
+    lt_but000           type standard table of but000.
+  field-symbols:
+    <ls_main_data>      type ZTB_PRTNRDAT_OLP.
+
+  select *
+    into table lt_main_data[]
+    from ZTB_PRTNRDAT_OLP
+   where PROCESS_NUMBER = p_prcsn       " Номер процесса
+     and PROCESSED in (0, 2).           " Только не обработанные и обработанные с ошибкой
+
+  if sy-subrc eq 0.
+* Начало: Надо проверить что ДП не был создан нами
+    loop at lt_main_data[] assigning <ls_main_data> where zres_partner is not initial.
+      select *
+        into corresponding fields of table lt_but000
+        from but000 as b
+       where b~partner eq <ls_main_data>-zres_partner.
+      if sy-subrc eq 0.
+        <ls_main_data>-processed = '1'. " Если создан нами то исключаем его из дальнейшей обработки
+      endif.
+    endloop.
+    delete lt_main_data where processed eq '1'.
+* Конец:  Надо проверить что ДП не был создан нами
+    if l_type eq 'ZRST'.
+      loop at lt_main_data[] assigning <ls_main_data> where PROCESSED ne '1'.
+        <ls_main_data>-PROCESSED   = '0'.
+        <ls_main_data>-ZRESULT_MSG = ''.
+        <ls_main_data>-ZRES_PARTNER = ''.
+      endloop.
+      modify ZTB_PRTNRDAT_OLP from table lt_main_data.
+      commit work and wait.
+      WRITE 'Записи успешно обновлены'.
+      WRITE /.
+    else.
+      delete ZTB_PRTNRDAT_OLP from table lt_main_data.
+      commit work and wait.
+      WRITE 'Записи успешно удалены'.
+      WRITE /.
+    endif.
+  else.
+    WRITE 'Ошибка: отсутствуют записи с таким номером загрузки портфеля просроченных ссуд!'.
+    WRITE /.
+  endif.
