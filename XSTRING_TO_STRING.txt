@@ -1,0 +1,31 @@
+﻿  data: lv_xstring  type xstring,
+        lv_dataxstr type text255,
+        lv_string   type string.
+  TYPES : BEGIN OF TY_BINARY,
+            BINARY_FIELD(1000) TYPE C,
+          END OF TY_BINARY.
+  DATA : LT_BINARY type table of TY_BINARY with header line,
+         lv_length type i.
+
+  CALL FUNCTION 'SCMS_STRING_TO_XSTRING'
+   EXPORTING
+     text     = 'PIPUSER2'
+   IMPORTING
+     BUFFER   = lv_xstring.
+
+  MOVE lv_xstring TO lv_dataxstr.
+  CLEAR lv_xstring.
+  MOVE lv_dataxstr TO lv_xstring.
+
+  CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+    EXPORTING BUFFER  = lv_xstring
+    IMPORTING OUTPUT_LENGTH = lv_length
+    TABLES BINARY_TAB = LT_BINARY.
+
+  CALL FUNCTION 'SCMS_BINARY_TO_STRING'
+    EXPORTING
+      INPUT_LENGTH = lv_length
+    IMPORTING
+      TEXT_BUFFER = lv_string
+    TABLES
+      BINARY_TAB  = LT_BINARY.
