@@ -1,0 +1,571 @@
+*&---------------------------------------------------------------------*
+*& Include ZP_SSV_BPARTNER_LOAD_TOP                          Report ZP_SSV_BPARTNER_LOAD
+*&
+*&---------------------------------------------------------------------*
+
+REPORT   ZP_SSV_BPARTNER_LOAD.
+
+data:
+  lv_result   TYPE string,
+  l_file      TYPE localfile,
+  gt_files    TYPE filetable,
+  g_rc        TYPE sysubrc,
+  g_act       TYPE i.
+
+selection-screen begin of block file_select with frame title text-100.
+
+  parameters: p_fname TYPE ZED_SSV_FILENAME OBLIGATORY.
+
+selection-screen end of block file_select.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_fname.
+  FREE gt_files.
+  CLEAR: g_rc,
+         g_act.
+  CALL METHOD cl_gui_frontend_services=>file_open_dialog
+    EXPORTING
+      window_title            = 'Файл для загрузки данных'
+      default_extension       = '*.CSV'
+      file_filter             = cl_gui_frontend_services=>filetype_all
+    CHANGING
+      file_table              = gt_files
+      rc                      = g_rc
+      user_action             = g_act
+    EXCEPTIONS
+      file_open_dialog_failed = 1
+      cntl_error              = 2
+      error_no_gui            = 3
+      not_supported_by_gui    = 4
+      OTHERS                  = 5.
+
+  IF sy-subrc = 0 AND
+     g_rc = 1.
+    CHECK g_act = cl_gui_frontend_services=>action_ok AND
+          gt_files IS NOT INITIAL.
+    READ TABLE gt_files INTO p_fname INDEX 1.
+  ENDIF.
+
+START-OF-SELECTION.
+ DATA: BEGIN OF record_fld_structure,
+        value TYPE I,
+       END OF record_fld_structure.
+ data:
+    lt_table          TYPE TABLE OF string,
+    lt_flddata        TYPE TABLE OF string,
+    lv_error_txt      type string,
+    lv_fld_index_err  type sytabix,
+    lv_curr_tab_idx   type sytabix,
+    lv_curr_row_idx   type sytabix,
+    lv_counter_skip   type i,
+    lv_record_err_flg type char1,
+    lv_filename       type text255,
+    lt_req_fld        like sorted table of record_fld_structure WITH UNIQUE KEY value,
+    lt_skip_fld       like sorted table of record_fld_structure WITH UNIQUE KEY value,
+    lv_prev_country   type LAND1,
+    ls_main_data      type ZTB_PRTNRDAT_OLP,
+    lt_main_data      type standard table of ZTB_PRTNRDAT_OLP,
+    ls_docdata_olp    type ZTB_DOCDATA_OLP,
+    lt_docdata_olp    type standard table of ZTB_DOCDATA_OLP,
+    ls_telnedat_olp   type ztb_telnedat_olp,
+    lt_telnedat_olp   type standard table of ztb_telnedat_olp
+    .
+
+  field-symbols:
+    <fs_table>      TYPE string,
+    <fs_data>       TYPE string.
+
+  data:
+    lt_data_inferr type STANDARD TABLE OF ZTB_PRELOADBPCRD,
+    ls_data_inferr type ZTB_PRELOADBPCRD,
+    lt_data_noterr type STANDARD TABLE OF ZTB_PRELOADBPCRD,
+    ls_data_noterr type ZTB_PRELOADBPCRD.
+
+  perform get_req_fld.
+  perform get_skip_fld.
+
+  CALL FUNCTION 'GUI_UPLOAD'
+    EXPORTING
+      filename                = p_fname
+      filetype                = 'ASC'
+*      codepage                = '4110'
+    TABLES
+      data_tab                = lt_table
+    EXCEPTIONS
+      file_open_error         = 1
+      file_read_error         = 2
+      no_batch                = 3
+      gui_refuse_filetransfer = 4
+      invalid_type            = 5
+      no_authority            = 6
+      unknown_error           = 7
+      bad_data_format         = 8
+      header_not_allowed      = 9
+      separator_not_allowed   = 10
+      header_too_long         = 11
+      unknown_dp_error        = 12
+      access_denied           = 13
+      dp_out_of_memory        = 14
+      disk_full               = 15
+      dp_timeout              = 16
+      OTHERS                  = 17.
+
+  CALL FUNCTION 'Z_FM_SSV_GETFILENAME'
+    EXPORTING IV_FULLFILENAME  = p_fname
+    IMPORTING EV_FILENAME      = lv_filename.
+
+  data: lr_data_descr TYPE REF TO cl_abap_structdescr,
+        lt_data       TYPE STANDARD TABLE OF ZSTR_SSV_BPARTNER_LOADER,
+        ls_data       TYPE ZSTR_SSV_BPARTNER_LOADER.
+  FIELD-SYMBOLS: <ls_component> LIKE LINE OF cl_abap_structdescr=>components,
+                 <lv_value> TYPE ANY.
+  lr_data_descr ?= cl_abap_typedescr=>describe_by_data( ls_data ).
+
+  clear lv_record_err_flg.
+
+    loop at lt_table assigning <fs_table> from 2.
+      lv_curr_row_idx = sy-tabix.
+      split <fs_table> at ';' into table lt_flddata.
+      clear lv_counter_skip.
+* Начало: Проход по каждому полю таблицы csv
+      LOOP AT lr_data_descr->components ASSIGNING <ls_component>.
+        lv_curr_tab_idx = sy-tabix.
+        READ TABLE lt_skip_fld WITH TABLE KEY value = sy-tabix TRANSPORTING NO FIELDS.
+        if sy-subrc eq 0.
+          lv_counter_skip = lv_counter_skip + 1.
+          continue.
+        endif.
+        lv_curr_tab_idx = lv_curr_tab_idx - lv_counter_skip.
+
+        READ TABLE lt_flddata assigning <fs_data> INDEX lv_curr_tab_idx.
+        IF sy-subrc <> 0.
+          EXIT. " значения в таблице кончились, дальше идти по полям смысла нет
+        ENDIF.
+        ASSIGN COMPONENT <ls_component>-name OF STRUCTURE ls_data TO <lv_value>.
+* Форматный контроль
+        lv_curr_tab_idx = sy-tabix. " Номер поля в CSV
+        perform check_format
+             using lv_curr_tab_idx
+                   <ls_component>-type_kind
+                   <ls_component>-name
+          changing <fs_data>.
+* Если ошибка то записываем инф и переходим к след записи
+        if lv_fld_index_err is not initial.
+          ls_data_inferr-CLIENT      = sy-mandt.
+          ls_data_inferr-EXTERNALID  = ls_data-EXTERNAL_ID.
+          ls_data_inferr-CSVROWNUM   = lv_curr_row_idx.
+          ls_data_inferr-ERROR_TXT   = lv_error_txt.
+          ls_data_inferr-ERROR_IDX   = lv_fld_index_err.
+          ls_data_inferr-ERROR_VAL   = <fs_data>.
+          ls_data_inferr-FILENAME    = lv_filename.
+          ls_data_inferr-CREATED_BY  = sy-uname.
+          ls_data_inferr-CREATE_DATE = sy-datum.
+          ls_data_inferr-CREATE_TIME = sy-uzeit.
+          append ls_data_inferr to lt_data_inferr.
+          clear lv_fld_index_err.
+          lv_record_err_flg = 'X'.
+          exit.
+        endif.
+* Если ошибок нет то продолжаем обработку полей
+        <lv_value> = <fs_data>.
+      endloop.
+* Конец: Проход по каждому полю таблицы csv
+      if lv_record_err_flg eq 'X'.
+* Если взведен флаг ошибки то ничего пока не делаем просто очищаем сам флажок
+        clear lv_record_err_flg.
+      else.
+* А если ошибок небыло, то
+* Добавляем запись в таблицу основных данных которые предварительно проверены по формату
+        append ls_data TO lt_data.
+* Исключаем эту запись если ранее она была в таблице ошибок
+        clear ls_data_noterr.
+        ls_data_noterr-EXTERNALID = ls_data-EXTERNAL_ID.
+        append ls_data_noterr to lt_data_noterr.
+      endif.
+    endloop.
+
+   loop at lt_data into ls_data.
+* Проверка заполнено ли самое главное поле
+     check ls_data-EXTERNAL_ID is not initial.
+* Заполнение основных данных о ДП
+     move-corresponding ls_data to ls_main_data.
+     ls_main_data-e_mail     = ls_data-SMTP_ADDR.
+     ls_main_data-client     = sy-mandt.
+     ls_main_data-processed  = ' '.
+     append ls_main_data to lt_main_data.
+* Заполнение документов
+     move-corresponding ls_data to ls_docdata_olp.
+     ls_docdata_olp-client     = sy-mandt.
+     append ls_docdata_olp to lt_docdata_olp.
+* Заполнение документа СНИЛС
+     if ls_data-SNILSDOCNUMBER is not initial.
+       clear ls_docdata_olp.
+       ls_docdata_olp-client      = sy-mandt.
+       ls_docdata_olp-EXTERNAL_ID = ls_data-EXTERNAL_ID.
+       ls_docdata_olp-TYPEDOC     = '83'. " СНИЛС
+       ls_docdata_olp-NUMBERDOC   = ls_data-SNILSDOCNUMBER.
+       append ls_docdata_olp to lt_docdata_olp.
+     endif.
+* Заполнение документа другого типа
+     if ls_data-OTHERDOC_NUMBER is not initial or
+        ls_data-OTHERDOC_TYPE is not initial or
+        ls_data-OTHERDOC_SERIAL is not initial.
+       clear ls_docdata_olp.
+       ls_docdata_olp-client          = sy-mandt.
+       ls_docdata_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
+       ls_docdata_olp-TYPEDOC         = ls_data-OTHERDOC_TYPE.
+       ls_docdata_olp-SERIALDOC       = ls_data-OTHERDOC_SERIAL.
+       ls_docdata_olp-NUMBERDOC       = ls_data-OTHERDOC_NUMBER.
+       ls_docdata_olp-IDINSTITUTEDOC  = ls_data-OTHERDOC_IDINSTITUTE.
+       ls_docdata_olp-IDVALIDFROMDATE = ls_data-OTHERDOC_IDVALIDFROMDATE.
+       ls_docdata_olp-IDVALIDTODATE   = ls_data-OTHERDOC_VALIDTODATE.
+       ls_docdata_olp-IDENTRYDATE     = ls_data-OTHERDOC_IDENTRYDATE.
+       append ls_docdata_olp to lt_docdata_olp.
+     endif.
+* Заполнение таблицы телефонов (Первый телефон он же основной)
+     ls_telnedat_olp-client          = sy-mandt.
+     ls_telnedat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
+     ls_telnedat_olp-NUMBERROW       = '1'.
+     ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_1R.
+     ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_1.
+     ls_telnedat_olp-COUNTRY         = 'RU'.
+     if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+       ls_telnedat_olp-r_3_user   = '2'.
+     else.
+       ls_telnedat_olp-r_3_user   = '1'.
+     endif.
+     ls_telnedat_olp-consnumber     = '1'.
+     ls_telnedat_olp-std_no         = 'X'.
+     append ls_telnedat_olp to lt_telnedat_olp.
+* Второй телефон
+     if ls_data-TELNUMBER_2 is not initial.
+       ls_telnedat_olp-NUMBERROW       = '2'.
+       ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_2R.
+       ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_2.
+       if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+         ls_telnedat_olp-r_3_user   = '2'.
+       else.
+         ls_telnedat_olp-r_3_user   = '1'.
+       endif.
+       ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
+       ls_telnedat_olp-std_no         = ' '.
+       append ls_telnedat_olp to lt_telnedat_olp.
+     endif.
+* Третий телефон
+     if ls_data-TELNUMBER_3 is not initial.
+       ls_telnedat_olp-NUMBERROW       = '3'.
+       ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_3R.
+       ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_3.
+       if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+         ls_telnedat_olp-r_3_user   = '2'.
+       else.
+         ls_telnedat_olp-r_3_user   = '1'.
+       endif.
+       ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
+       ls_telnedat_olp-std_no         = ' '.
+       append ls_telnedat_olp to lt_telnedat_olp.
+     endif.
+* Четвертый телефон
+     if ls_data-TELNUMBER_4 is not initial.
+       ls_telnedat_olp-NUMBERROW       = '4'.
+       ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_4R.
+       ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_4.
+       if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+         ls_telnedat_olp-r_3_user   = '2'.
+       else.
+         ls_telnedat_olp-r_3_user   = '1'.
+       endif.
+       ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
+       ls_telnedat_olp-std_no         = ' '.
+       append ls_telnedat_olp to lt_telnedat_olp.
+     endif.
+* Пятый телефон
+     if ls_data-TELNUMBER_5 is not initial.
+       ls_telnedat_olp-NUMBERROW       = '5'.
+       ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_5R.
+       ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_5.
+       if ls_telnedat_olp-comm_notes = 'CO'. "Контактный
+         ls_telnedat_olp-r_3_user   = '2'.
+       else.
+         ls_telnedat_olp-r_3_user   = '1'.
+       endif.
+       ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
+       ls_telnedat_olp-std_no         = ' '.
+       append ls_telnedat_olp to lt_telnedat_olp.
+     endif.
+
+*     exit.
+   endloop.
+
+   delete ZTB_PRELOADBPCRD from table lt_data_noterr.
+
+* Вывод данных на экран
+   PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'.  " вывод на экран
+   PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'. " вывод на экран
+
+* Подпрограмма check_format - форматный контроль полей в csv
+form check_format
+  using     i_index     type sytabix
+            i_type_kind type abap_typekind
+            i_compname  type abap_compname
+  changing p_value  type string.
+  data: lv_value_str type string.
+  case i_index.
+   when 10. " Дата рождения
+   when others.
+  endcase.
+* Начало: Проверка обязательности полей
+  READ TABLE lt_req_fld WITH TABLE KEY value = i_index TRANSPORTING NO FIELDS.
+  if sy-subrc eq 0.
+    if p_value is initial.
+      lv_fld_index_err = i_index.
+      lv_value_str     = lv_fld_index_err.
+      condense lv_value_str.
+      CONCATENATE 'Незаполнено обязательное поле, номер поля в csv "' lv_value_str '".'
+             INTO lv_error_txt.
+      return.
+    endif.
+  endif.
+* Конец: Проверка обязательности полей
+  case i_type_kind.
+    when 'D'.
+      lv_value_str = p_value.
+      check lv_value_str is not initial.
+      CALL FUNCTION 'CONVERT_DATE_TO_INTERNAL'
+        EXPORTING
+          date_external = lv_value_str
+        IMPORTING
+          date_internal = p_value
+        EXCEPTIONS
+          DATE_EXTERNAL_IS_INVALID = 1
+          OTHERS                   = 2.
+      if sy-subrc ne 0.
+        lv_fld_index_err = i_index.
+        p_value          = lv_value_str.
+        CONCATENATE 'Ошибка преобразования строки "' p_value '"'
+               INTO lv_error_txt.
+        CONCATENATE lv_error_txt ' в дату!'
+               INTO lv_error_txt.
+      endif.
+    when 'C'.
+      if i_compname eq 'MARITALSTATUS'.
+        data: lt_maritalstatus type standard table of tb027.
+        select *
+          into table lt_maritalstatus
+          from tb027.
+        read table lt_maritalstatus with table key CLIENT = sy-mandt MARST = p_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = i_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+                 INTO lv_error_txt.
+          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO lv_error_txt.
+        endif.
+      endif.
+      if i_compname eq 'SEX'.
+        return. " Временно отключил контроль для теста потом убрать!!!!
+        data: lt_dd07v TYPE TABLE OF dd07v.
+        CALL FUNCTION 'DD_DOMVALUES_GET'
+          EXPORTING
+            domname = 'BU_SEXID'
+            text    = 'X'
+            langu   = sy-langu
+          TABLES
+            dd07v_tab = lt_dd07v
+          EXCEPTIONS
+            wrong_textflag = 1
+            OTHERS         = 2.
+        READ TABLE lt_dd07v WITH KEY domvalue_l = p_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = i_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+                 INTO lv_error_txt.
+          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO lv_error_txt.
+        endif.
+      endif.
+      if i_compname eq 'FATCASTATUS'.
+        return. " Временно отключил контроль для теста потом убрать!!!!
+        CALL FUNCTION 'DD_DOMVALUES_GET'
+          EXPORTING
+            domname = 'ZD_FATCA'
+            text    = 'X'
+            langu   = sy-langu
+          TABLES
+            dd07v_tab = lt_dd07v
+          EXCEPTIONS
+            wrong_textflag = 1
+            OTHERS         = 2.
+        READ TABLE lt_dd07v WITH KEY domvalue_l = p_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = i_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+                 INTO lv_error_txt.
+          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO lv_error_txt.
+        endif.
+      endif.
+      if i_compname eq 'NATIONALITY' or
+         i_compname eq 'ADRREG_COUNTRY' or
+         i_compname eq 'ADRLVE_COUNTRY' or
+         i_compname eq 'ADROTHER_COUNTRY'.
+        data: lt_nationality type standard table of t005.
+        select *
+          into table lt_nationality " Справочник стран
+          from t005.
+        clear lv_prev_country.
+        check p_value is not initial.
+        read table lt_nationality with key MANDT = sy-mandt LAND1 = p_value transporting no fields.
+        if sy-subrc eq 0.
+          lv_prev_country = p_value.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = i_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+                 INTO lv_error_txt.
+          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO lv_error_txt.
+        endif.
+      endif.
+      if i_compname eq 'TELNUMBER_1R' or
+         i_compname eq 'TELNUMBER_2R' or
+         i_compname eq 'TELNUMBER_3R' or
+         i_compname eq 'TELNUMBER_4R' or
+         i_compname eq 'TELNUMBER_5R'.
+        data: lt_phone_type type sorted table of ZUBR_PHONE_TYPE WITH UNIQUE KEY CLIENT TYPE.
+        select *
+          into table lt_phone_type
+          from ZUBR_PHONE_TYPE.
+        check p_value is not initial.
+        read table lt_phone_type with table key CLIENT = sy-mandt TYPE = p_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = i_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+                 INTO lv_error_txt.
+          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO lv_error_txt.
+        endif.
+      endif.
+      if ( i_compname eq 'ADRREG_REGION' or
+           i_compname eq 'ADRLVE_REGION' or
+           i_compname eq 'ADROTHER_REGION' ) and
+          lv_prev_country is not initial.
+        data: lt_region type sorted table of T005S WITH UNIQUE KEY MANDT LAND1 BLAND.
+        select *
+          into table lt_region
+          from T005S.
+        check p_value is not initial.
+        read table lt_region with table key MANDT = sy-mandt LAND1 = lv_prev_country BLAND = p_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = i_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+                 INTO lv_error_txt.
+          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO lv_error_txt.
+        endif.
+      endif.
+  endcase.
+endform.
+* Формируем список обязательных полей подпрограммой get_req_fld
+form get_req_fld.
+  record_fld_structure-value = 1.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 2.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 3.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 8.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 9.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 10.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 13.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 14.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 15.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 16.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 25.
+*  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 33.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 34.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 35.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 36.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 37.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 38.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 48.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 49.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 59.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 60.
+  insert record_fld_structure into table lt_req_fld.
+endform.
+* Формируем индексы полей в структуре ZSTR_SSV_BPARTNER_LOADER которые просто пропускаем как будто их там и нет
+form get_skip_fld.
+  record_fld_structure-value = 38.
+  insert record_fld_structure into table lt_skip_fld.
+  record_fld_structure-value = 39.
+  insert record_fld_structure into table lt_skip_fld.
+endform.
+
+*&---------------------------------------------------------------------*
+*&      Form  TO_AVL
+*&---------------------------------------------------------------------*
+FORM to_avl USING lt_tabl TYPE STANDARD TABLE lv_struct TYPE dd02l-tabname.
+  DATA: ls_layout TYPE lvc_s_layo
+      , lt_sort   TYPE lvc_t_sort
+      , ls_sort   TYPE lvc_s_sort
+      .
+
+  ls_layout-cwidth_opt = 'X'.
+*  ls_vari-report       = sy-repid.
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+      i_callback_program = sy-repid
+      is_layout_lvc      = ls_layout
+      i_structure_name   = lv_struct "
+      it_sort_lvc	       = lt_sort
+    TABLES
+      t_outtab           = lt_tabl[]. "lt_OUTB_rep[].
+ENDFORM.
+
+
+form fill_value_in_records
+  using     i_index     type sytabix
+            i_type_kind type abap_typekind
+            i_compname  type abap_compname
+   changing p_record    type ZTB_PRTNRDAT_OLP.
+
+endform.
