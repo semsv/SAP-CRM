@@ -20,8 +20,7 @@
         ls_params              TYPE crmt_name_value_pair,
         lv_str_buf             type string,
         lv_partner             type bu_partner ,
-*        ls_dfkkbptaxnum        type DFKKBPTAXNUM,
-*        ls_cfm                 type ZUBRR_DM_CFM,
+
         ls_zbut                type ZBUT0000000001,
         lv_id_main             type char1,
         lv_dflt_adr            type char1,
@@ -34,16 +33,13 @@
         lr_tel_ent             TYPE REF TO cl_crm_bol_entity,
         lv_consnumber_i        type i,
         lv_comment             type string value '',
-*        lt_bp_adr2             type ZTAB_ADR2_TSH_TWR_PHNS,
-*        lv_flg_nouse           type string,
+
         lv_rez                 type string,
         lv_len                 type i,
         lv_error               type string
        ,lr_error               type ref to cx_root
        ,lr_sql_error           type ref to cx_sy_native_sql_error
-*       ,lr_conv_error          type ref to cx_sy_conversion_no_number
-*       ,lv_Mobile_Tel          type char1
-*       ,lv_success             Type CRMT_BOOLEAN
+
        ,lt_but000              type standard table of but000
        ,ls_but000              type but000
        ,lv_commit              type char1
@@ -480,30 +476,22 @@ DATA: ls_tel                TYPE crmst_telephone_buil
 ******************************  ТЕЛЕФОНЫ (КОНЕЦ) *******************************************************************
 
              lr_core->modify( ).
-*             if lr_transaction->check_save_possible( ) EQ abap_true.
-                if lr_transaction->save( ) eq abap_true and
-                   LV_COMMIT eq 'X'.
-                   lr_transaction->commit( abap_false ).
-                   <ls_cli_fiz>-PROCESSED = '1'. " 'OK'
-                else.
-                   lr_transaction->revert( ).
-                   lr_transaction->rollback( ).
-                   <ls_cli_fiz>-PROCESSED = '2'. " 'ERROR'.
-                   <ls_cli_fiz>-ZRESULT_MSG = 'Произошел откат сохранения ДП'.
-                   lv_comment = 'Произошел откат сохранения ДП'.
-                endif.
-*             else.
-*                ev_result = 'ERROR'.
-*                lv_error = 'Невозможно сохранить ДП'.
-*                append lv_error to et_error.
-*                return.
-*             endif.
+
+            if lr_transaction->save( ) eq abap_true and
+              LV_COMMIT eq 'X'.
+              lr_transaction->commit( abap_false ).
+              <ls_cli_fiz>-PROCESSED = '1'. " 'OK'
+            else.
+              lr_transaction->revert( ).
+              lr_transaction->rollback( ).
+              <ls_cli_fiz>-PROCESSED = '2'. " 'ERROR'.
+              <ls_cli_fiz>-ZRESULT_MSG = 'Произошел откат сохранения ДП'.
+              lv_comment = 'Произошел откат сохранения ДП'.
+            endif.
+
             if <ls_cli_fiz>-PROCESSED = '1'.
                 CLEAR: ls_zbut000_ext,lv_fatca.
-*                select single *
-*                into corresponding fields of ls_zbut000_ext
-*                from zbut000_ext
-*                where partner = lv_partner.
+
                 ls_zbut000_ext-partner     = lv_partner.
                 ls_zbut000_ext-zbirthplace = <ls_cli_fiz>-BIRTHPLACE.
                 ls_zbut000_ext-zpdl        = 2. " По умолчанию - "Не является"
@@ -518,51 +506,6 @@ DATA: ls_tel                TYPE crmst_telephone_buil
 
                 modify zbut000_ext from ls_zbut000_ext.
 
-                "ИНН
-*                if    <ls_cli_fiz>-INN           is NOT INITIAL
-*                  and strlen( <ls_cli_fiz>-INN ) > 2.
-*                      ls_dfkkbptaxnum-PARTNER = lv_partner.
-*                      ls_dfkkbptaxnum-TAXTYPE = 'RU1'.
-*                      ls_dfkkbptaxnum-TAXNUM  = <ls_cli_fiz>-INN.
-*                      MODIFY DFKKBPTAXNUM from ls_dfkkbptaxnum.
-*                endif.
-
-*                try.
-*                     CLEAR ls_cfm.
-*                     EXEC SQL.
-*                         select nvl(to_char(trunc(max(TO_TIMESTAMP_TZ(date_time, 'Mon DD YYYY HH24:MI:SS  TZD'))),'yyyymmdd'),'00000000') date_time
-*                         into :ls_cfm-ZDT_FILL
-*                         FROM dev_user.z_p1_z_info
-*                         where F_CLIENT = :<ls_cli_fiz>-F_CLIENT
-*                           and (    descr_1 = 'Дата заполнения анкеты (досье) клиента'
-*                                 or descr_1 = 'Дата изменения анкеты'
-*                               )
-*                     ENDEXEC.
-*                     if    sy-subrc = 0
-*                       and ls_cfm-zdt_fill is not initial.
-*
-*                        ls_cfm-PARTNER = lv_partner.
-*                        ls_cfm-ZISEXTREMIST = '2'.
-*                        MODIFY ZUBRR_DM_CFM FROM ls_cfm.
-**                       ------------------------------------
-*                     endif.
-*                catch cx_sy_native_sql_error into lr_sql_error.
-*                     lv_error = lr_sql_error->sqlmsg.
-*                     concatenate lv_comment 'Ошибка(z_p1_docum 01):'
-*                                 lv_error
-*                                 cl_abap_char_utilities=>cr_lf
-*                     into lv_comment
-*                     SEPARATED BY space.
-*                catch cx_root into lr_error.
-*                     lv_error = lr_error->if_message~GET_LONGTEXT( )."get_text( ).
-*                     concatenate lv_comment
-*                                 'Ошибка(z_p1_docum 02):'
-*                                 lv_error
-*                                 cl_abap_char_utilities=>cr_lf
-*                     into lv_comment
-*                     SEPARATED BY space.
-*                endtry.
-*                commit work.
             endif."<ls_cli_fiz>-ZRESULT = 'OK'.
 
          endif."if lr_builheader is not b
@@ -570,18 +513,6 @@ DATA: ls_tel                TYPE crmst_telephone_buil
          <ls_cli_fiz>-ZRESULT_MSG = lv_comment.
          MODIFY ZTB_PRTNRDAT_OLP from <ls_cli_fiz>.
          commit work and wait.
-**         ls_zbut-PARTNER      = lv_partner.
-**         if <ls_cli_fiz>-FLAG_BD = 0.
-**            ls_zbut-ZZNIUOLTPA   = 'FLFL'.
-**            ls_zbut-ZZOUIUOLTPAO = 'FLFL'.
-**         else.
-**            ls_zbut-ZZNIUOLTPA   = 'FLUL'.
-**            ls_zbut-ZZOUIUOLTPAO = 'FLUL'.
-**         endif.
-**         ls_zbut-ZZUOA        = <ls_cli_fiz>-F_CLIENT + 100000.
-**         CONDENSE ls_zbut-ZZUOA.
-**         ls_zbut-ZZAOUUAAUI   = 'X'.
-**         MODIFY ZBUT0000000001 FROM ls_zbut.
 *        ------------------------------------
 
       endloop."lt_cli_fiz[] assigning <ls_cli_fiz>.
