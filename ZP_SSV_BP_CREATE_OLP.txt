@@ -1,0 +1,68 @@
+﻿*&---------------------------------------------------------------------*
+*& Include ZP_SSV_BP_CREATE_OLP_TOP                          Report ZP_SSV_BP_CREATE_OLP
+*&
+*&---------------------------------------------------------------------*
+
+REPORT   ZP_SSV_BP_CREATE_OLP.
+
+TYPE-POOLS: vrm.
+
+selection-screen begin of block file_select with frame title text-100.
+  parameters: p_prcsn TYPE ZED_SSV_BPL_PROCESSNUMBER OBLIGATORY.
+selection-screen end of block file_select.
+
+
+START-OF-SELECTION.
+
+  data: lt_result type standard table of ZTB_PRTNRDAT_OLP.
+
+  CALL FUNCTION 'ZFM_UTL_SSV_LOAD_BP_PRC'
+    EXPORTING IV_PROC_NUM = p_prcsn
+              IV_COMMIT   = 'X'.
+
+  CALL FUNCTION 'ZFM_UTL_SSV_REPL_BP_PRC'
+    EXPORTING IV_PROC_NUM = p_prcsn
+              IV_COMMIT   = 'X'.
+
+  select *
+    into table lt_result
+    from ZTB_PRTNRDAT_OLP
+   where PROCESS_NUMBER = p_prcsn
+     and ZRES_PARTNER is not null
+     and ZRES_PARTNER <> ' '
+     and ZRES_PARTNER <> '0000000000'
+     and PROCESSED = 1. " успешно обработанные
+
+* Вывод данных на экран
+  PERFORM to_avl USING lt_result 'ZTB_PRTNRDAT_OLP'.  " вывод на экран успешно созданных ДП
+  CLEAR lt_result[].
+
+  select *
+    into table lt_result
+    from ZTB_PRTNRDAT_OLP
+   where PROCESS_NUMBER = p_prcsn
+     and PROCESSED      = 2. " обработанные с ошибкой
+
+* Вывод данных на экран
+  PERFORM to_avl USING lt_result 'ZTB_PRTNRDAT_OLP'.
+
+*&---------------------------------------------------------------------*
+*&      Form  TO_AVL
+*&---------------------------------------------------------------------*
+FORM to_avl USING lt_tabl TYPE STANDARD TABLE lv_struct TYPE dd02l-tabname.
+  DATA: ls_layout TYPE lvc_s_layo
+      , lt_sort   TYPE lvc_t_sort
+      , ls_sort   TYPE lvc_s_sort
+      .
+
+  ls_layout-cwidth_opt = 'X'.
+*  ls_vari-report       = sy-repid.
+  CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY_LVC'
+    EXPORTING
+      i_callback_program = sy-repid
+      is_layout_lvc      = ls_layout
+      i_structure_name   = lv_struct "
+      it_sort_lvc	       = lt_sort
+    TABLES
+      t_outtab           = lt_tabl[]. "lt_OUTB_rep[].
+ENDFORM.
