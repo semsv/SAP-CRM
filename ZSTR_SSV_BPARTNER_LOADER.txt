@@ -1,85 +1,87 @@
-EXTERNAL_ID			ZED_SSV_BPL_EXTERNALID	CHAR	32	0	Идентификатор клиента в источнике данных (внешняя система)
-FIRSTNAME			BU_NAMEP_F		CHAR	40	0	Имя делового партнера (лицо)
-LASTNAME			BU_NAMEP_L		CHAR	40	0	Фамилия делового партнера (лицо)
-MIDDLENAME			BU_NAMEMID		CHAR	40	0	Среднее имя или второе имя лица
-NICKNAME			BU_NICKNAM		CHAR	40	0	Основное имя делового партнера (лицо)
-BIRTHNAME			BU_BIRTHNM		CHAR	40	0	Фамилия делового партнера, полученная при рождении
-FULLNAME			BU_NAME1TX		CHAR	80	0	Полное имя
-BIRTHPLACE			BU_BIRTHPL		CHAR	40	0	Место рождения делового партнера
-SEX				BU_SEXID		CHAR	1	0	Пол делового партнера (лицо)
-BIRTHDATE			BU_BIRTHDT		DATS	8	0	Дата рождения делового партнера
-QUESTION_BKI			ZED_SSV_BPL_QUESTIONBKI	CHAR	255	0	Вопрос для БКИ
-ANSWER_BKI			ZED_SSV_BPL_ANSWERBKI	CHAR	255	0	Ответ для БКИ
-MARITALSTATUS			BU_MARST		CHAR	1	0	Семейное положение делового партнера
-NATIONALITY			BU_NATIO		CHAR	3	0	Госпринадлежность делового партнера
-CLIENTKIND						INT1	3	0	«1» - резидент «2» - нерезидент
-FATCASTATUS			ZADTEL000003		CHAR	1	0	Резидент/нерезидент - расширение (сгенерировано)
-IPDL				ZADTEL000006		NUMC	1	0	ИПДЛ - расширение (сгенерировано)
-IPDLPOST			ZADTEL000009		CHAR	30	0	Должность ИПДЛ - расширение (сгенерировано)
-IPDLCOUNTRY			ZADTEL00000C		CHAR	3	0	Государство ИПДЛ - расширение (сгенерировано)
-IPDLREL				ZADTEL00000F		CHAR	30	0	Степень родства ИПДЛ - расширение (сгенерировано)
-IPDLDESCR			ZADTEL00000I		CHAR	30	0	Примечание для ИПДЛ - расширение (сгенерировано)
-IPDLEMPLOYER			BU_EMPLO		CHAR	35	0	Работодатель делового партнера
-IPDLADDRESS			BU_BIRTHPL		CHAR	40	0	Место рождения делового партнера
-IPDLFIO				BU_NAME1TX		CHAR	80	0	Полное имя
-IPDLBIRTHDATE			BU_BIRTHDT		DATS	8	0	Дата рождения делового партнера
-PDL				ZADTEL000006		NUMC	1	0	ИПДЛ - расширение (сгенерировано)
-PDLPOST				ZADTEL000009		CHAR	30	0	Должность ИПДЛ - расширение (сгенерировано)
-PDLREL				ZADTEL00000F		CHAR	30	0	Степень родства ИПДЛ - расширение (сгенерировано)
-PDLDESCR			ZADTEL00000I		CHAR	30	0	Примечание для ИПДЛ - расширение (сгенерировано)
-PDLEMPLOYER			BU_EMPLO		CHAR	35	0	Работодатель делового партнера
-PDLADDRESS			BU_BIRTHPL		CHAR	40	0	Место рождения делового партнера
-PDLFIO				BU_NAME1TX		CHAR	80	0	Полное имя
-PDLBIRTHDATE			BU_BIRTHDT		DATS	8	0	Дата рождения делового партнера
-TYPEDOC				BU_ID_TYPE		CHAR	6	0	Вид идентификации
-SERIALDOC			ZADTEL00001T		CHAR	15	0	Серия документа - расширение (сгенерировано)
-NUMBERDOC			BU_ID_NUMBER		CHAR	60	0	Идентификационный номер
-IDINSTITUTEDOC			ZADTEL00001Q		CHAR	255	0	Ответсвенная инстанц - расширение (сгенерировано)
-CODEOTDDOC			ZADTEL00001W		CHAR	10	0	Код подразделения - расширение (сгенерировано)
-IDVALIDFROMDATE			BU_ID_VALID_DATE_FROM	DATS	8	0	Начало срока действия для идентификационного номера
-IDVALIDTODATE			BU_ID_VALID_DATE_TO	DATS	8	0	Конец срока действия идентификационного номера
-IDENTRYDATE			BU_ID_ENTRY_DATE	DATS	8	0	Дата записи для номера идентификатора
-SNILSDOCNUMBER			BU_ID_NUMBER		CHAR	60	0	Идентификационный номер
-OTHERDOC_TYPE			BU_ID_TYPE		CHAR	6	0	Вид идентификации
-OTHERDOC_SERIAL			ZADTEL00001T		CHAR	15	0	Серия документа - расширение (сгенерировано)
-OTHERDOC_NUMBER			BU_ID_NUMBER		CHAR	60	0	Идентификационный номер
-OTHERDOC_IDINSTITUTE		ZADTEL00001Q		CHAR	255	0	Ответсвенная инстанц - расширение (сгенерировано)
-OTHERDOC_CODEOTD		ZADTEL00001W		CHAR	10	0	Код подразделения - расширение (сгенерировано)
-OTHERDOC_IDVALIDFROMDATE	BU_ID_VALID_DATE_FROM	DATS	8	0	Начало срока действия для идентификационного номера
-OTHERDOC_VALIDTODATE		BU_ID_VALID_DATE_TO	DATS	8	0	Конец срока действия идентификационного номера
-OTHERDOC_IDENTRYDATE		BU_ID_ENTRY_DATE	DATS	8	0	Дата записи для номера идентификатора
-TELNUMBER_1			AD_TLNMBR		CHAR	30	0	Номер телефона: код + номер
-TELNUMBER_1R			AD_REMARK2		CHAR	50	0	Примечания к соединению связи
-TELNUMBER_2			AD_TLNMBR		CHAR	30	0	Номер телефона: код + номер
-TELNUMBER_2R			AD_REMARK2		CHAR	50	0	Примечания к соединению связи
-TELNUMBER_3			AD_TLNMBR		CHAR	30	0	Номер телефона: код + номер
-TELNUMBER_3R			AD_REMARK2		CHAR	50	0	Примечания к соединению связи
-TELNUMBER_4			AD_TLNMBR		CHAR	30	0	Номер телефона: код + номер
-TELNUMBER_4R			AD_REMARK2		CHAR	50	0	Примечания к соединению связи
-TELNUMBER_5			AD_TLNMBR		CHAR	30	0	Номер телефона: код + номер
-TELNUMBER_5R			AD_REMARK2		CHAR	50	0	Примечания к соединению связи
-SMTP_ADDR			AD_SMTPADR		CHAR	241	0	Адрес электронной почты
-ADRREG_COUNTRY			LAND1			CHAR	3	0	Код страны
-ADRREG_REGION			REGIO			CHAR	3	0	Регион (штат, федер. земля, провинция, область, графство)
-ADRREG_DISTRCT_NO		ZED_SSV_DISTRICT_DB	CHAR	40	0	Район
-ADRREG_CITY_NO			AD_CITY1		CHAR	255	0	Город
-ADRREG_STREET			AD_STREET		CHAR	60	0	Улица
-ADRREG_HOME			AD_CITYHNM		CHAR	12	0	Кодировка другого местожит. для файла города/станд. файла
-ADRREG_NUMB_ROOM		AD_ROOMNUM		CHAR	10	0	Номер квартиры или помещения
-ADRREG_DELI_SERV_NUMBER		AD_PSTCD1		CHAR	10	0	Почтовый индекс города
-ADRLVE_COUNTRY			LAND1			CHAR	3	0	Код страны
-ADRLVE_REGION			REGIO			CHAR	3	0	Регион (штат, федер. земля, провинция, область, графство)
-ADRLVE_DISTRCT_NO		ZED_SSV_DISTRICT_DB	CHAR	40	0	Район
-ADRLVE_CITY_NO			AD_CITY1		CHAR	255	0	Город
-ADRLVE_STREET			AD_STREET		CHAR	60	0	Улица
-ADRLVE_HOME			AD_CITYHNM		CHAR	12	0	Кодировка другого местожит. для файла города/станд. файла
-ADRLVE_NUMB_ROOM		AD_ROOMNUM		CHAR	10	0	Номер квартиры или помещения
-ADRLVE_DELI_SERV_NUMBER		AD_PSTCD1		CHAR	10	0	Почтовый индекс города
-ADROTHER_COUNTRY		LAND1			CHAR	3	0	Код страны
-ADROTHER_REGION			REGIO			CHAR	3	0	Регион (штат, федер. земля, провинция, область, графство)
-ADROTHER_DISTRCT_NO		ZED_SSV_DISTRICT_DB	CHAR	40	0	Район
-ADROTHER_CITY_NO		AD_CITY1		CHAR	255	0	Город
-ADROTHER_STREET			AD_STREET		CHAR	60	0	Улица
-ADROTHER_HOME			AD_CITYHNM		CHAR	12	0	Кодировка другого местожит. для файла города/станд. файла
-ADROTHER_NUMB_ROOM		AD_ROOMNUM		CHAR	10	0	Номер квартиры или помещения
-ADROTHER_DELI_SERV_NUMBER	AD_PSTCD1		CHAR	10	0	Почтовый индекс города
+п»їEXTERNAL_ID			ZED_SSV_BPL_EXTERNALID	CHAR	32	0	РРґРµРЅС‚РёС„РёРєР°С‚РѕСЂ РєР»РёРµРЅС‚Р° РІ РёСЃС‚РѕС‡РЅРёРєРµ РґР°РЅРЅС‹С… (РІРЅРµС€РЅСЏСЏ СЃРёСЃС‚РµРјР°)
+FIRSTNAME			BU_NAMEP_F		CHAR	40	0	РРјСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР° (Р»РёС†Рѕ)
+LASTNAME			BU_NAMEP_L		CHAR	40	0	Р¤Р°РјРёР»РёСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР° (Р»РёС†Рѕ)
+MIDDLENAME			BU_NAMEMID		CHAR	40	0	РЎСЂРµРґРЅРµРµ РёРјСЏ РёР»Рё РІС‚РѕСЂРѕРµ РёРјСЏ Р»РёС†Р°
+NICKNAME			BU_NICKNAM		CHAR	40	0	РћСЃРЅРѕРІРЅРѕРµ РёРјСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР° (Р»РёС†Рѕ)
+BIRTHNAME			BU_BIRTHNM		CHAR	40	0	Р¤Р°РјРёР»РёСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°, РїРѕР»СѓС‡РµРЅРЅР°СЏ РїСЂРё СЂРѕР¶РґРµРЅРёРё
+FULLNAME			BU_NAME1TX		CHAR	80	0	РџРѕР»РЅРѕРµ РёРјСЏ
+BIRTHPLACE			BU_BIRTHPL		CHAR	40	0	РњРµСЃС‚Рѕ СЂРѕР¶РґРµРЅРёСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+SEX				BU_SEXID		CHAR	1	0	РџРѕР» РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР° (Р»РёС†Рѕ)
+BIRTHDATE			BU_BIRTHDT		DATS	8	0	Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+QUESTION_BKI			ZED_SSV_BPL_QUESTIONBKI	CHAR	255	0	Р’РѕРїСЂРѕСЃ РґР»СЏ Р‘РљР
+ANSWER_BKI			ZED_SSV_BPL_ANSWERBKI	CHAR	255	0	РћС‚РІРµС‚ РґР»СЏ Р‘РљР
+MARITALSTATUS			BU_MARST		CHAR	1	0	РЎРµРјРµР№РЅРѕРµ РїРѕР»РѕР¶РµРЅРёРµ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+NATIONALITY			BU_NATIO		CHAR	3	0	Р“РѕСЃРїСЂРёРЅР°РґР»РµР¶РЅРѕСЃС‚СЊ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+CLIENTKIND						INT1	3	0	В«1В» - СЂРµР·РёРґРµРЅС‚ В«2В» - РЅРµСЂРµР·РёРґРµРЅС‚
+FATCASTATUS			ZADTEL000003		CHAR	1	0	Р РµР·РёРґРµРЅС‚/РЅРµСЂРµР·РёРґРµРЅС‚ - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+IPDL				ZADTEL000006		NUMC	1	0	РРџР”Р› - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+IPDLPOST			ZADTEL000009		CHAR	30	0	Р”РѕР»Р¶РЅРѕСЃС‚СЊ РРџР”Р› - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+IPDLCOUNTRY			ZADTEL00000C		CHAR	3	0	Р“РѕСЃСѓРґР°СЂСЃС‚РІРѕ РРџР”Р› - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+IPDLREL				ZADTEL00000F		CHAR	30	0	РЎС‚РµРїРµРЅСЊ СЂРѕРґСЃС‚РІР° РРџР”Р› - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+IPDLDESCR			ZADTEL00000I		CHAR	30	0	РџСЂРёРјРµС‡Р°РЅРёРµ РґР»СЏ РРџР”Р› - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+IPDLEMPLOYER			BU_EMPLO		CHAR	35	0	Р Р°Р±РѕС‚РѕРґР°С‚РµР»СЊ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+IPDLADDRESS			BU_BIRTHPL		CHAR	40	0	РњРµСЃС‚Рѕ СЂРѕР¶РґРµРЅРёСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+IPDLFIO				BU_NAME1TX		CHAR	80	0	РџРѕР»РЅРѕРµ РёРјСЏ
+IPDLBIRTHDATE			BU_BIRTHDT		DATS	8	0	Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+PDL				ZADTEL000006		NUMC	1	0	РРџР”Р› - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+PDLPOST				ZADTEL000009		CHAR	30	0	Р”РѕР»Р¶РЅРѕСЃС‚СЊ РРџР”Р› - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+PDLREL				ZADTEL00000F		CHAR	30	0	РЎС‚РµРїРµРЅСЊ СЂРѕРґСЃС‚РІР° РРџР”Р› - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+PDLDESCR			ZADTEL00000I		CHAR	30	0	РџСЂРёРјРµС‡Р°РЅРёРµ РґР»СЏ РРџР”Р› - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+PDLEMPLOYER			BU_EMPLO		CHAR	35	0	Р Р°Р±РѕС‚РѕРґР°С‚РµР»СЊ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+PDLADDRESS			BU_BIRTHPL		CHAR	40	0	РњРµСЃС‚Рѕ СЂРѕР¶РґРµРЅРёСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+PDLFIO				BU_NAME1TX		CHAR	80	0	РџРѕР»РЅРѕРµ РёРјСЏ
+PDLBIRTHDATE			BU_BIRTHDT		DATS	8	0	Р”Р°С‚Р° СЂРѕР¶РґРµРЅРёСЏ РґРµР»РѕРІРѕРіРѕ РїР°СЂС‚РЅРµСЂР°
+TYPEDOC				BU_ID_TYPE		CHAR	6	0	Р’РёРґ РёРґРµРЅС‚РёС„РёРєР°С†РёРё
+SERIALDOC			ZADTEL00001T		CHAR	15	0	РЎРµСЂРёСЏ РґРѕРєСѓРјРµРЅС‚Р° - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+NUMBERDOC			BU_ID_NUMBER		CHAR	60	0	РРґРµРЅС‚РёС„РёРєР°С†РёРѕРЅРЅС‹Р№ РЅРѕРјРµСЂ
+IDINSTITUTEDOC			ZADTEL00001Q		CHAR	255	0	РћС‚РІРµС‚СЃРІРµРЅРЅР°СЏ РёРЅСЃС‚Р°РЅС† - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+CODEOTDDOC			ZADTEL00001W		CHAR	10	0	РљРѕРґ РїРѕРґСЂР°Р·РґРµР»РµРЅРёСЏ - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+IDVALIDFROMDATE			BU_ID_VALID_DATE_FROM	DATS	8	0	РќР°С‡Р°Р»Рѕ СЃСЂРѕРєР° РґРµР№СЃС‚РІРёСЏ РґР»СЏ РёРґРµРЅС‚РёС„РёРєР°С†РёРѕРЅРЅРѕРіРѕ РЅРѕРјРµСЂР°
+IDVALIDTODATE			BU_ID_VALID_DATE_TO	DATS	8	0	РљРѕРЅРµС† СЃСЂРѕРєР° РґРµР№СЃС‚РІРёСЏ РёРґРµРЅС‚РёС„РёРєР°С†РёРѕРЅРЅРѕРіРѕ РЅРѕРјРµСЂР°
+IDENTRYDATE			BU_ID_ENTRY_DATE	DATS	8	0	Р”Р°С‚Р° Р·Р°РїРёСЃРё РґР»СЏ РЅРѕРјРµСЂР° РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂР°
+SNILSDOCNUMBER			BU_ID_NUMBER		CHAR	60	0	РРґРµРЅС‚РёС„РёРєР°С†РёРѕРЅРЅС‹Р№ РЅРѕРјРµСЂ
+OTHERDOC_TYPE			BU_ID_TYPE		CHAR	6	0	Р’РёРґ РёРґРµРЅС‚РёС„РёРєР°С†РёРё
+OTHERDOC_SERIAL			ZADTEL00001T		CHAR	15	0	РЎРµСЂРёСЏ РґРѕРєСѓРјРµРЅС‚Р° - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+OTHERDOC_NUMBER			BU_ID_NUMBER		CHAR	60	0	РРґРµРЅС‚РёС„РёРєР°С†РёРѕРЅРЅС‹Р№ РЅРѕРјРµСЂ
+OTHERDOC_IDINSTITUTE		ZADTEL00001Q		CHAR	255	0	РћС‚РІРµС‚СЃРІРµРЅРЅР°СЏ РёРЅСЃС‚Р°РЅС† - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+OTHERDOC_CODEOTD		ZADTEL00001W		CHAR	10	0	РљРѕРґ РїРѕРґСЂР°Р·РґРµР»РµРЅРёСЏ - СЂР°СЃС€РёСЂРµРЅРёРµ (СЃРіРµРЅРµСЂРёСЂРѕРІР°РЅРѕ)
+OTHERDOC_IDVALIDFROMDATE	BU_ID_VALID_DATE_FROM	DATS	8	0	РќР°С‡Р°Р»Рѕ СЃСЂРѕРєР° РґРµР№СЃС‚РІРёСЏ РґР»СЏ РёРґРµРЅС‚РёС„РёРєР°С†РёРѕРЅРЅРѕРіРѕ РЅРѕРјРµСЂР°
+OTHERDOC_VALIDTODATE		BU_ID_VALID_DATE_TO	DATS	8	0	РљРѕРЅРµС† СЃСЂРѕРєР° РґРµР№СЃС‚РІРёСЏ РёРґРµРЅС‚РёС„РёРєР°С†РёРѕРЅРЅРѕРіРѕ РЅРѕРјРµСЂР°
+OTHERDOC_IDENTRYDATE		BU_ID_ENTRY_DATE	DATS	8	0	Р”Р°С‚Р° Р·Р°РїРёСЃРё РґР»СЏ РЅРѕРјРµСЂР° РёРґРµРЅС‚РёС„РёРєР°С‚РѕСЂР°
+TELNUMBER_1			AD_TLNMBR		CHAR	30	0	РќРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°: РєРѕРґ + РЅРѕРјРµСЂ
+TELNUMBER_1R			AD_REMARK2		CHAR	50	0	РџСЂРёРјРµС‡Р°РЅРёСЏ Рє СЃРѕРµРґРёРЅРµРЅРёСЋ СЃРІСЏР·Рё
+TELNUMBER_2			AD_TLNMBR		CHAR	30	0	РќРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°: РєРѕРґ + РЅРѕРјРµСЂ
+TELNUMBER_2R			AD_REMARK2		CHAR	50	0	РџСЂРёРјРµС‡Р°РЅРёСЏ Рє СЃРѕРµРґРёРЅРµРЅРёСЋ СЃРІСЏР·Рё
+TELNUMBER_3			AD_TLNMBR		CHAR	30	0	РќРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°: РєРѕРґ + РЅРѕРјРµСЂ
+TELNUMBER_3R			AD_REMARK2		CHAR	50	0	РџСЂРёРјРµС‡Р°РЅРёСЏ Рє СЃРѕРµРґРёРЅРµРЅРёСЋ СЃРІСЏР·Рё
+TELNUMBER_4			AD_TLNMBR		CHAR	30	0	РќРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°: РєРѕРґ + РЅРѕРјРµСЂ
+TELNUMBER_4R			AD_REMARK2		CHAR	50	0	РџСЂРёРјРµС‡Р°РЅРёСЏ Рє СЃРѕРµРґРёРЅРµРЅРёСЋ СЃРІСЏР·Рё
+TELNUMBER_5			AD_TLNMBR		CHAR	30	0	РќРѕРјРµСЂ С‚РµР»РµС„РѕРЅР°: РєРѕРґ + РЅРѕРјРµСЂ
+TELNUMBER_5R			AD_REMARK2		CHAR	50	0	РџСЂРёРјРµС‡Р°РЅРёСЏ Рє СЃРѕРµРґРёРЅРµРЅРёСЋ СЃРІСЏР·Рё
+SMTP_ADDR			AD_SMTPADR		CHAR	241	0	РђРґСЂРµСЃ СЌР»РµРєС‚СЂРѕРЅРЅРѕР№ РїРѕС‡С‚С‹
+ADRREG_COUNTRY			LAND1			CHAR	3	0	РљРѕРґ СЃС‚СЂР°РЅС‹
+ADRREG_REGION			REGIO			CHAR	3	0	Р РµРіРёРѕРЅ (С€С‚Р°С‚, С„РµРґРµСЂ. Р·РµРјР»СЏ, РїСЂРѕРІРёРЅС†РёСЏ, РѕР±Р»Р°СЃС‚СЊ, РіСЂР°С„СЃС‚РІРѕ)
+ADRREG_DISTRCT_NO		ZED_SSV_DISTRICT_DB	CHAR	40	0	Р Р°Р№РѕРЅ
+ADRREG_CITY_NO			AD_CITY1		CHAR	255	0	Р“РѕСЂРѕРґ
+ADRREG_STREET			AD_STREET		CHAR	60	0	РЈР»РёС†Р°
+ADRREG_HOME			AD_CITYHNM		CHAR	12	0	РљРѕРґРёСЂРѕРІРєР° РґСЂСѓРіРѕРіРѕ РјРµСЃС‚РѕР¶РёС‚. РґР»СЏ С„Р°Р№Р»Р° РіРѕСЂРѕРґР°/СЃС‚Р°РЅРґ. С„Р°Р№Р»Р°
+ADRREG_HOUSE_NO	AD_HSNM1	CHAR	10	0	РќРѕРјРµСЂ РґРѕРјР°
+ADRREG_BUILDING	AD_BLDNG	CHAR	20	0	Р—РґР°РЅРёРµ (РЅРѕРјРµСЂ РёР»Рё РєРѕРґ)
+ADRREG_NUMB_ROOM		AD_ROOMNUM		CHAR	10	0	РќРѕРјРµСЂ РєРІР°СЂС‚РёСЂС‹ РёР»Рё РїРѕРјРµС‰РµРЅРёСЏ
+ADRREG_DELI_SERV_NUMBER		AD_PSTCD1		CHAR	10	0	РџРѕС‡С‚РѕРІС‹Р№ РёРЅРґРµРєСЃ РіРѕСЂРѕРґР°
+ADRLVE_COUNTRY			LAND1			CHAR	3	0	РљРѕРґ СЃС‚СЂР°РЅС‹
+ADRLVE_REGION			REGIO			CHAR	3	0	Р РµРіРёРѕРЅ (С€С‚Р°С‚, С„РµРґРµСЂ. Р·РµРјР»СЏ, РїСЂРѕРІРёРЅС†РёСЏ, РѕР±Р»Р°СЃС‚СЊ, РіСЂР°С„СЃС‚РІРѕ)
+ADRLVE_DISTRCT_NO		ZED_SSV_DISTRICT_DB	CHAR	40	0	Р Р°Р№РѕРЅ
+ADRLVE_CITY_NO			AD_CITY1		CHAR	255	0	Р“РѕСЂРѕРґ
+ADRLVE_STREET			AD_STREET		CHAR	60	0	РЈР»РёС†Р°
+ADRLVE_HOME			AD_CITYHNM		CHAR	12	0	РљРѕРґРёСЂРѕРІРєР° РґСЂСѓРіРѕРіРѕ РјРµСЃС‚РѕР¶РёС‚. РґР»СЏ С„Р°Р№Р»Р° РіРѕСЂРѕРґР°/СЃС‚Р°РЅРґ. С„Р°Р№Р»Р°
+ADRLVE_NUMB_ROOM		AD_ROOMNUM		CHAR	10	0	РќРѕРјРµСЂ РєРІР°СЂС‚РёСЂС‹ РёР»Рё РїРѕРјРµС‰РµРЅРёСЏ
+ADRLVE_DELI_SERV_NUMBER		AD_PSTCD1		CHAR	10	0	РџРѕС‡С‚РѕРІС‹Р№ РёРЅРґРµРєСЃ РіРѕСЂРѕРґР°
+ADROTHER_COUNTRY		LAND1			CHAR	3	0	РљРѕРґ СЃС‚СЂР°РЅС‹
+ADROTHER_REGION			REGIO			CHAR	3	0	Р РµРіРёРѕРЅ (С€С‚Р°С‚, С„РµРґРµСЂ. Р·РµРјР»СЏ, РїСЂРѕРІРёРЅС†РёСЏ, РѕР±Р»Р°СЃС‚СЊ, РіСЂР°С„СЃС‚РІРѕ)
+ADROTHER_DISTRCT_NO		ZED_SSV_DISTRICT_DB	CHAR	40	0	Р Р°Р№РѕРЅ
+ADROTHER_CITY_NO		AD_CITY1		CHAR	255	0	Р“РѕСЂРѕРґ
+ADROTHER_STREET			AD_STREET		CHAR	60	0	РЈР»РёС†Р°
+ADROTHER_HOME			AD_CITYHNM		CHAR	12	0	РљРѕРґРёСЂРѕРІРєР° РґСЂСѓРіРѕРіРѕ РјРµСЃС‚РѕР¶РёС‚. РґР»СЏ С„Р°Р№Р»Р° РіРѕСЂРѕРґР°/СЃС‚Р°РЅРґ. С„Р°Р№Р»Р°
+ADROTHER_NUMB_ROOM		AD_ROOMNUM		CHAR	10	0	РќРѕРјРµСЂ РєРІР°СЂС‚РёСЂС‹ РёР»Рё РїРѕРјРµС‰РµРЅРёСЏ
+ADROTHER_DELI_SERV_NUMBER AD_PSTCD1 CHAR 10 0 РџРѕС‡С‚РѕРІС‹Р№ РёРЅРґРµРєСЃ РіРѕСЂРѕРґР°
