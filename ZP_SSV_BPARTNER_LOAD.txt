@@ -67,7 +67,9 @@ START-OF-SELECTION.
     ls_docdata_olp    type ZTB_DOCDATA_OLP,
     lt_docdata_olp    type standard table of ZTB_DOCDATA_OLP,
     ls_telnedat_olp   type ztb_telnedat_olp,
-    lt_telnedat_olp   type standard table of ztb_telnedat_olp
+    lt_telnedat_olp   type standard table of ztb_telnedat_olp,
+    ls_addrdat_olp    type ZTB_ADDRDAT_OLP,
+    lt_addrdat_olp    type standard table of ZTB_ADDRDAT_OLP
     .
 
   field-symbols:
@@ -109,6 +111,11 @@ START-OF-SELECTION.
       dp_timeout              = 16
       OTHERS                  = 17.
 
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
+
   CALL FUNCTION 'Z_FM_SSV_GETFILENAME'
     EXPORTING IV_FULLFILENAME  = p_fname
     IMPORTING EV_FILENAME      = lv_filename.
@@ -119,6 +126,35 @@ START-OF-SELECTION.
   FIELD-SYMBOLS: <ls_component> LIKE LINE OF cl_abap_structdescr=>components,
                  <lv_value> TYPE ANY.
   lr_data_descr ?= cl_abap_typedescr=>describe_by_data( ls_data ).
+
+*Генерация номера вызова загрузки портфеля просроченных ссуд
+  data: lv_olp_req_id type ZED_SSV_OLPBPLR.
+  CALL FUNCTION 'NUMBER_GET_NEXT'
+    EXPORTING
+      nr_range_nr                   = '00'
+      object                        = 'ZNR_UTLBPL'
+*   QUANTITY                      = '1'
+*   SUBOBJECT                     = ' '
+*   TOYEAR                        = '0000'
+*   IGNORE_BUFFER                 = ' '
+   IMPORTING
+     number                        = lv_olp_req_id
+*   QUANTITY                      =
+*   RETURNCODE                    =
+   EXCEPTIONS
+     interval_not_found            = 1
+     number_range_not_intern       = 2
+     object_not_found              = 3
+     quantity_is_0                 = 4
+     quantity_is_not_1             = 5
+     interval_overflow             = 6
+     buffer_overflow               = 7
+     OTHERS                        = 8
+            .
+  IF sy-subrc <> 0.
+    MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+            WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  ENDIF.
 
   clear lv_record_err_flg.
 
@@ -186,15 +222,52 @@ START-OF-SELECTION.
    loop at lt_data into ls_data.
 * Проверка заполнено ли самое главное поле
      check ls_data-EXTERNAL_ID is not initial.
+* Перед заполнением основных данных о ДП попробуем найти его по внешнему ид
+     data: lv_processed    type CHAR1,
+           lv_zres_partner type BU_PARTNER,
+           lv_ZRESULT_MSG  type TEXT255.
+     data: lt_but000 type standard table of but000.
+     select single z~processed z~zres_partner z~ZRESULT_MSG
+       into (lv_processed, lv_zres_partner, lv_ZRESULT_MSG)
+       from ztb_PRTNRDAT_OLP as z
+      where z~EXTERNAL_ID = ls_data-EXTERNAL_ID
+        and z~processed   in (1, 2)
+        and z~zres_partner is not null.
 * Заполнение основных данных о ДП
-     move-corresponding ls_data to ls_main_data.
-     ls_main_data-e_mail     = ls_data-SMTP_ADDR.
-     ls_main_data-client     = sy-mandt.
-     ls_main_data-processed  = ' '.
+     clear ls_main_data.
+     if sy-subrc eq 0.
+       move-corresponding ls_data to ls_main_data.
+       ls_main_data-e_mail         = ls_data-SMTP_ADDR.
+       ls_main_data-client         = sy-mandt.
+       ls_main_data-processed      = '0'.
+       ls_main_data-PROCESS_NUMBER = lv_olp_req_id.
+       ls_main_data-zres_partner   = lv_zres_partner.
+       if lv_processed eq 1.
+         ls_main_data-ZRESULT_MSG    = lv_ZRESULT_MSG.
+       else.
+         ls_main_data-ZRESULT_MSG    = ''.
+       endif.
+* Найдем ранее созданного ДП если не был создан то надо очистить поле
+       select *
+         into corresponding fields of table lt_but000
+         from but000 as b
+        where b~partner eq ls_main_data-zres_partner.
+       if sy-subrc eq 0.
+       else.
+         ls_main_data-zres_partner   = ''.
+       endif.
+     else.
+       move-corresponding ls_data to ls_main_data.
+       ls_main_data-e_mail         = ls_data-SMTP_ADDR.
+       ls_main_data-client         = sy-mandt.
+       ls_main_data-processed      = '0'.
+       ls_main_data-PROCESS_NUMBER = lv_olp_req_id.
+     endif.
      append ls_main_data to lt_main_data.
 * Заполнение документов
      move-corresponding ls_data to ls_docdata_olp.
      ls_docdata_olp-client     = sy-mandt.
+     ls_docdata_olp-NUMBERROW  = 1.
      append ls_docdata_olp to lt_docdata_olp.
 * Заполнение документа СНИЛС
      if ls_data-SNILSDOCNUMBER is not initial.
@@ -203,6 +276,7 @@ START-OF-SELECTION.
        ls_docdata_olp-EXTERNAL_ID = ls_data-EXTERNAL_ID.
        ls_docdata_olp-TYPEDOC     = '83'. " СНИЛС
        ls_docdata_olp-NUMBERDOC   = ls_data-SNILSDOCNUMBER.
+       ls_docdata_olp-NUMBERROW   = 2.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
 * Заполнение документа другого типа
@@ -215,6 +289,7 @@ START-OF-SELECTION.
        ls_docdata_olp-TYPEDOC         = ls_data-OTHERDOC_TYPE.
        ls_docdata_olp-SERIALDOC       = ls_data-OTHERDOC_SERIAL.
        ls_docdata_olp-NUMBERDOC       = ls_data-OTHERDOC_NUMBER.
+       ls_docdata_olp-NUMBERROW       = 3.
        ls_docdata_olp-IDINSTITUTEDOC  = ls_data-OTHERDOC_IDINSTITUTE.
        ls_docdata_olp-IDVALIDFROMDATE = ls_data-OTHERDOC_IDVALIDFROMDATE.
        ls_docdata_olp-IDVALIDTODATE   = ls_data-OTHERDOC_VALIDTODATE.
@@ -292,15 +367,77 @@ START-OF-SELECTION.
        ls_telnedat_olp-std_no         = ' '.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
-
+* Заполнение адресов (первый адрес) Адрес Регистрации (ZADR_1) справочник TB009
+     ls_addrdat_olp-client          = sy-mandt.
+     ls_addrdat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
+     ls_addrdat_olp-NUMBERROW       = '1'.
+     ls_addrdat_olp-ADR_NOTES       = ''.
+     ls_addrdat_olp-PCODE1_EXT      = '1'. " ZADR_1
+     ls_addrdat_olp-country         = ls_data-ADRREG_COUNTRY.
+     ls_addrdat_olp-REGION          = ls_data-ADRREG_REGION.
+     ls_addrdat_olp-POSTL_COD1      = ls_data-ADRREG_DELI_SERV_NUMBER. " Почтовый индекс
+     ls_addrdat_olp-ROOM_NO         = ls_data-ADRREG_NUMB_ROOM.        " Квартира
+     ls_addrdat_olp-HOME_CITY       = ls_data-ADRREG_DISTRCT_NO.       " Район
+     ls_addrdat_olp-CITY            = ls_data-ADRREG_CITY_NO.          " Город
+     ls_addrdat_olp-STREET          = ls_data-ADRREG_STREET.           " Улица
+     ls_addrdat_olp-HOUSE_NO        = ls_data-ADRREG_HOME.             " Дом
+     ls_addrdat_olp-HOUSE_NO2       = ''.
+     ls_addrdat_olp-BUILDING        = ''.
+     append ls_addrdat_olp to lt_addrdat_olp.
+* Второй адрес - Адрес Местонахождения (ZADR_2)
+     ls_addrdat_olp-client          = sy-mandt.
+     ls_addrdat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
+     ls_addrdat_olp-NUMBERROW       = '2'.
+     ls_addrdat_olp-ADR_NOTES       = ''.
+     ls_addrdat_olp-PCODE1_EXT      = '2'. " ZADR_2
+     ls_addrdat_olp-country         = ls_data-ADRLVE_COUNTRY.
+     ls_addrdat_olp-REGION          = ls_data-ADRLVE_REGION.
+     ls_addrdat_olp-POSTL_COD1      = ls_data-ADRLVE_DELI_SERV_NUMBER. " Почтовый индекс
+     ls_addrdat_olp-ROOM_NO         = ls_data-ADRLVE_NUMB_ROOM.        " Квартира
+     ls_addrdat_olp-HOME_CITY       = ls_data-ADRLVE_DISTRCT_NO.       " Район
+     ls_addrdat_olp-CITY            = ls_data-ADRLVE_CITY_NO.          " Город
+     ls_addrdat_olp-STREET          = ls_data-ADRLVE_STREET.           " Улица
+     ls_addrdat_olp-HOUSE_NO        = ls_data-ADRLVE_HOME.             " Дом
+     ls_addrdat_olp-HOUSE_NO2       = ''.
+     ls_addrdat_olp-BUILDING        = ''.
+     append ls_addrdat_olp to lt_addrdat_olp.
+* Третий адрес - Адрес Контактный (ZADR_3)
+     if ls_data-ADROTHER_COUNTRY is not initial.
+       ls_addrdat_olp-client          = sy-mandt.
+       ls_addrdat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
+       ls_addrdat_olp-NUMBERROW       = '3'.
+       ls_addrdat_olp-ADR_NOTES       = ''.
+       ls_addrdat_olp-PCODE1_EXT      = '3'. " ZADR_3
+       ls_addrdat_olp-country         = ls_data-ADROTHER_COUNTRY.
+       ls_addrdat_olp-REGION          = ls_data-ADROTHER_REGION.
+       ls_addrdat_olp-POSTL_COD1      = ls_data-ADROTHER_DELI_SERV_NUMBER. " Почтовый индекс
+       ls_addrdat_olp-ROOM_NO         = ls_data-ADROTHER_NUMB_ROOM.        " Квартира
+       ls_addrdat_olp-HOME_CITY       = ls_data-ADROTHER_DISTRCT_NO.       " Район
+       ls_addrdat_olp-CITY            = ls_data-ADROTHER_CITY_NO.          " Город
+       ls_addrdat_olp-STREET          = ls_data-ADROTHER_STREET.           " Улица
+       ls_addrdat_olp-HOUSE_NO        = ls_data-ADROTHER_HOME.             " Дом
+       ls_addrdat_olp-HOUSE_NO2       = ''.
+       ls_addrdat_olp-BUILDING        = ''.
+       append ls_addrdat_olp to lt_addrdat_olp.
+     endif.
 *     exit.
    endloop.
 
    delete ZTB_PRELOADBPCRD from table lt_data_noterr.
 
+   modify ztb_PRTNRDAT_OLP from table lt_main_data.
+   modify ztb_docdata_olp from table lt_docdata_olp.
+   modify ztb_addrdat_olp from table lt_addrdat_olp.
+   modify ztb_telnedat_olp from table lt_telnedat_olp.
+   modify ZTB_PRELOADBPCRD from table lt_data_inferr.
+   commit work and wait.
+
 * Вывод данных на экран
    PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'.  " вывод на экран
    PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'. " вывод на экран
+   WRITE 'Создан портфель просроченных ссуд под номером: '.
+   WRITE lv_olp_req_id.
+   WRITE /.
 
 * Подпрограмма check_format - форматный контроль полей в csv
 form check_format
@@ -509,10 +646,10 @@ form get_req_fld.
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 16.
   insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 17.
+  insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 25.
 *  insert record_fld_structure into table lt_req_fld.
-  record_fld_structure-value = 33.
-  insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 34.
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 35.
@@ -523,13 +660,15 @@ form get_req_fld.
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 38.
   insert record_fld_structure into table lt_req_fld.
-  record_fld_structure-value = 48.
+  record_fld_structure-value = 39.
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 49.
   insert record_fld_structure into table lt_req_fld.
-  record_fld_structure-value = 59.
+  record_fld_structure-value = 50.
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 60.
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 61.
   insert record_fld_structure into table lt_req_fld.
 endform.
 * Формируем индексы полей в структуре ZSTR_SSV_BPARTNER_LOADER которые просто пропускаем как будто их там и нет
