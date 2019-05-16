@@ -44,7 +44,10 @@
        ,ls_but000              type but000
        ,lv_commit              type char1
        ,lv_partner_guid        type but000-partner_guid
-       ,lr_ent_col             type ref to IF_BOL_ENTITY_COL.
+       ,lr_ent_col             type ref to IF_BOL_ENTITY_COL
+
+       ,ls_olploadrepbp        type ZTB_OLPLOADREPBP
+       ,lt_olploadrepbp        type standard table of ZTB_OLPLOADREPBP.
 ******************************  ДОКУМЕНТЫ  *********************************************************************
   data: ls_idnumber           TYPE zcrmt_bupa_il_identification,
         lt_idnumber           TYPE TABLE OF zcrmt_bupa_il_identification,
@@ -516,7 +519,15 @@ DATA: ls_tel                TYPE crmst_telephone_buil
 *        ------------------------------------
 
       endloop."lt_cli_fiz[] assigning <ls_cli_fiz>.
-*      commit work.
+* Формируем отчет о загрузке ДП в систему SAP CRM (краткая форма)
+    ls_olploadrepbp-PROCESS_NUMBER = IV_PROC_NUM.
+    ls_olploadrepbp-CLIENT         = sy-mandt.
+    ls_olploadrepbp-CREATED_BY     = SY-UNAME.
+    ls_olploadrepbp-CREATE_DATE    = SY-DATUM.
+    ls_olploadrepbp-CREATE_TIME    = SY-UZEIT.
+    modify ZTB_OLPLOADREPBP from ls_olploadrepbp.
+    commit work.
+* Результат - ОК
     EV_RESULT = 'OK'.
   else.
       data:lv_str1 TYPE string,
