@@ -496,14 +496,13 @@ form check_format
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'Ошибка формата(MARITALSTATUS), значение "' p_value '",'
                  INTO lv_error_txt.
           CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
                  INTO lv_error_txt.
         endif.
       endif.
       if i_compname eq 'SEX'.
-        return. " Временно отключил контроль для теста потом убрать!!!!
         data: lt_dd07v TYPE TABLE OF dd07v.
         CALL FUNCTION 'DD_DOMVALUES_GET'
           EXPORTING
@@ -522,14 +521,13 @@ form check_format
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'Ошибка формата(SEX), значение "' p_value '",'
                  INTO lv_error_txt.
           CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
                  INTO lv_error_txt.
         endif.
       endif.
       if i_compname eq 'FATCASTATUS'.
-        return. " Временно отключил контроль для теста потом убрать!!!!
         CALL FUNCTION 'DD_DOMVALUES_GET'
           EXPORTING
             domname = 'ZD_FATCA'
@@ -547,7 +545,7 @@ form check_format
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'Ошибка формата(FATCASTATUS), значение "' p_value '",'
                  INTO lv_error_txt.
           CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
                  INTO lv_error_txt.
@@ -571,7 +569,7 @@ form check_format
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'Ошибка формата(*NATIONALITY*), значение "' p_value '",'
                  INTO lv_error_txt.
           CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
                  INTO lv_error_txt.
@@ -594,7 +592,7 @@ form check_format
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'Ошибка формата(*TELNUMBER*), значение "' p_value '",'
                  INTO lv_error_txt.
           CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
                  INTO lv_error_txt.
@@ -616,7 +614,7 @@ form check_format
           lv_fld_index_err = i_index.
           lv_value_str     = lv_fld_index_err.
           condense lv_value_str.
-          CONCATENATE 'Ошибка формата, значение "' p_value '",'
+          CONCATENATE 'Ошибка формата(*ADRREG,ADRLVE,ADROTHER*), значение "' p_value '",'
                  INTO lv_error_txt.
           CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
                  INTO lv_error_txt.
@@ -673,9 +671,9 @@ form get_req_fld.
 endform.
 * Формируем индексы полей в структуре ZSTR_SSV_BPARTNER_LOADER которые просто пропускаем как будто их там и нет
 form get_skip_fld.
-  record_fld_structure-value = 38.
-  insert record_fld_structure into table lt_skip_fld.
   record_fld_structure-value = 39.
+  insert record_fld_structure into table lt_skip_fld.
+  record_fld_structure-value = 40.
   insert record_fld_structure into table lt_skip_fld.
 endform.
 
