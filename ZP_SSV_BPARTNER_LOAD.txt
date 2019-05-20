@@ -4,7 +4,7 @@
 *&---------------------------------------------------------------------*
 
 REPORT   ZP_SSV_BPARTNER_LOAD.
-
+TYPE-POOLS: vrm.
 data:
   lv_result   TYPE string,
   l_file      TYPE localfile,
@@ -15,8 +15,55 @@ data:
 selection-screen begin of block file_select with frame title text-100.
 
   parameters: p_fname TYPE ZED_SSV_FILENAME OBLIGATORY.
+  parameters: systemid TYPE CRMT_PROCESS_TYPE_DB AS LISTBOX VISIBLE LENGTH 60 obligatory.
+  parameters: augrp    TYPE BU_AUGRP AS LISTBOX VISIBLE LENGTH 60 OBLIGATORY.
 
 selection-screen end of block file_select.
+
+" Начало: создаем элемент раскрывающийся список
+data:
+  name            TYPE vrm_id,
+  list            TYPE vrm_values,
+  value           LIKE LINE OF list,
+  ls_olpsyst_ctlg TYPE ZTB_OLPSYST_CTLG,
+  lt_olpsyst_ctlg TYPE STANDARD TABLE OF ZTB_OLPSYST_CTLG.
+AT SELECTION-SCREEN OUTPUT.
+  select *
+    into table lt_olpsyst_ctlg
+    from ZTB_OLPSYST_CTLG.
+
+  LOOP AT lt_olpsyst_ctlg INTO ls_olpsyst_ctlg.
+    value-key  = ls_olpsyst_ctlg-ID.
+    value-text = ls_olpsyst_ctlg-NAME.
+    append value to list.
+  ENDLOOP.
+
+ name = 'systemid'.
+ CALL FUNCTION 'VRM_SET_VALUES' EXPORTING id = name values = list.
+" Конец: создаем элемент раскрывающийся список
+
+" Начало: создаем элемент раскрывающийся список
+ clear list[].
+ data:
+   lt_augrp type standard table of ZTB_OLPCREATEREP,
+   ls_augrp type ZTB_OLPCREATEREP.
+
+ select *
+   into corresponding fields of table lt_augrp
+   from TB037  as a
+   join TB037T as b
+     on a~AUOBJ = b~AUOBJ
+    and a~AUGRP = b~AUGRP.
+
+  LOOP AT lt_augrp INTO ls_augrp.
+    value-key  = ls_augrp-AUGRP.
+    value-text = ls_augrp-BEZ50.
+    append value to list.
+  ENDLOOP.
+
+ name = 'augrp'.
+ CALL FUNCTION 'VRM_SET_VALUES' EXPORTING id = name values = list.
+" Конец: создаем элемент раскрывающийся список
 
 AT SELECTION-SCREEN ON VALUE-REQUEST FOR p_fname.
   FREE gt_files.
@@ -69,18 +116,25 @@ START-OF-SELECTION.
     ls_telnedat_olp   type ztb_telnedat_olp,
     lt_telnedat_olp   type standard table of ztb_telnedat_olp,
     ls_addrdat_olp    type ZTB_ADDRDAT_OLP,
-    lt_addrdat_olp    type standard table of ZTB_ADDRDAT_OLP
+    lt_addrdat_olp    type standard table of ZTB_ADDRDAT_OLP,
+    LV_SYSTEMID       type ZED_SSV_OLP_SYSTEMS_ID
     .
+
+  data:
+    lt_augrp type standard table of ZTB_OLPCREATEREP,
+    ls_augrp type ZTB_OLPCREATEREP.
 
   field-symbols:
     <fs_table>      TYPE string,
     <fs_data>       TYPE string.
 
   data:
-    lt_data_inferr type STANDARD TABLE OF ZTB_PRELOADBPCRD,
-    ls_data_inferr type ZTB_PRELOADBPCRD,
-    lt_data_noterr type STANDARD TABLE OF ZTB_PRELOADBPCRD,
-    ls_data_noterr type ZTB_PRELOADBPCRD.
+    lt_data_inferr  type STANDARD TABLE OF ZTB_PRELOADBPCRD,
+    ls_data_inferr  type ZTB_PRELOADBPCRD,
+    lt_data_noterr  type STANDARD TABLE OF ZTB_PRELOADBPCRD,
+    ls_data_noterr  type ZTB_PRELOADBPCRD,
+    ls_OLPCREATEREP type ZTB_OLPCREATEREP,
+    lt_OLPCREATEREP type standard table of ZTB_OLPCREATEREP.
 
   perform get_req_fld.
   perform get_skip_fld.
@@ -157,6 +211,7 @@ START-OF-SELECTION.
   ENDIF.
 
   clear lv_record_err_flg.
+  LV_SYSTEMID           = systemid.
 
     loop at lt_table assigning <fs_table> from 2.
       lv_curr_row_idx = sy-tabix.
@@ -188,6 +243,7 @@ START-OF-SELECTION.
         if lv_fld_index_err is not initial.
           ls_data_inferr-CLIENT      = sy-mandt.
           ls_data_inferr-EXTERNALID  = ls_data-EXTERNAL_ID.
+          ls_data_inferr-SYSTEMID    = LV_SYSTEMID.
           ls_data_inferr-CSVROWNUM   = lv_curr_row_idx.
           ls_data_inferr-ERROR_TXT   = lv_error_txt.
           ls_data_inferr-ERROR_IDX   = lv_fld_index_err.
@@ -215,6 +271,7 @@ START-OF-SELECTION.
 * Исключаем эту запись если ранее она была в таблице ошибок
         clear ls_data_noterr.
         ls_data_noterr-EXTERNALID = ls_data-EXTERNAL_ID.
+        ls_data_noterr-SYSTEMID   = LV_SYSTEMID.
         append ls_data_noterr to lt_data_noterr.
       endif.
     endloop.
@@ -222,19 +279,22 @@ START-OF-SELECTION.
    loop at lt_data into ls_data.
 * Проверка заполнено ли самое главное поле
      check ls_data-EXTERNAL_ID is not initial.
+* Заполнение основных данных о ДП
+     clear ls_main_data.
+     ls_main_data-systemid = LV_SYSTEMID.
 * Перед заполнением основных данных о ДП попробуем найти его по внешнему ид
      data: lv_processed    type CHAR1,
            lv_zres_partner type BU_PARTNER,
            lv_ZRESULT_MSG  type TEXT255.
      data: lt_but000 type standard table of but000.
+* Поиск ДП по внешнему ид
      select single z~processed z~zres_partner z~ZRESULT_MSG
        into (lv_processed, lv_zres_partner, lv_ZRESULT_MSG)
        from ztb_PRTNRDAT_OLP as z
       where z~EXTERNAL_ID = ls_data-EXTERNAL_ID
-        and z~processed   in (1, 2)
+        and z~SYSTEMID    = LV_SYSTEMID
         and z~zres_partner is not null.
 * Заполнение основных данных о ДП
-     clear ls_main_data.
      if sy-subrc eq 0.
        move-corresponding ls_data to ls_main_data.
        ls_main_data-e_mail         = ls_data-SMTP_ADDR.
@@ -262,11 +322,38 @@ START-OF-SELECTION.
        ls_main_data-client         = sy-mandt.
        ls_main_data-processed      = '0'.
        ls_main_data-PROCESS_NUMBER = lv_olp_req_id.
+* Если Мы уже создавали такого клиента из функционала протфеля просроченных ссуд то он есть в отчете ZTB_OLPREPORTSYS
+       data: ls_olprepsys      type ZTB_OLPREPORTSYS,
+             lt_olprepsys      type standard table of ZTB_OLPREPORTSYS,
+             lt_zbut0000000001 type standard table of zbut0000000001,
+             ls_zbut0000000001 type zbut0000000001.
+       clear lt_olprepsys[].
+       select *
+         into table lt_olprepsys
+         from ZTB_OLPREPORTSYS
+        where EXTERNALID       eq ls_main_data-EXTERNAL_ID
+          and SYSTEMID         eq LV_SYSTEMID.
+       if sy-subrc eq 0.
+         read table lt_olprepsys into ls_olprepsys index 1.
+         ls_main_data-zres_partner = ls_olprepsys-PARTNER.
+         clear lt_zbut0000000001[].
+         select *
+           into table lt_zbut0000000001
+           from zbut0000000001
+          where PARTNER     eq ls_main_data-zres_partner
+            and ZZNIUOLTPA  eq 'TWR'.
+         if sy-subrc eq 0.
+           read table lt_zbut0000000001 into ls_zbut0000000001 index 1.
+           ls_main_data-ZREP_TWR = ls_zbut0000000001-ZZUOA.
+         endif.
+       endif.
+
      endif.
      append ls_main_data to lt_main_data.
 * Заполнение документов
      move-corresponding ls_data to ls_docdata_olp.
      ls_docdata_olp-client     = sy-mandt.
+     ls_docdata_olp-SYSTEMID   = LV_SYSTEMID.
      ls_docdata_olp-NUMBERROW  = 1.
      append ls_docdata_olp to lt_docdata_olp.
 * Заполнение документа СНИЛС
@@ -277,6 +364,7 @@ START-OF-SELECTION.
        ls_docdata_olp-TYPEDOC     = '83'. " СНИЛС
        ls_docdata_olp-NUMBERDOC   = ls_data-SNILSDOCNUMBER.
        ls_docdata_olp-NUMBERROW   = 2.
+       ls_docdata_olp-SYSTEMID    = LV_SYSTEMID.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
 * Заполнение документа другого типа
@@ -294,6 +382,7 @@ START-OF-SELECTION.
        ls_docdata_olp-IDVALIDFROMDATE = ls_data-OTHERDOC_IDVALIDFROMDATE.
        ls_docdata_olp-IDVALIDTODATE   = ls_data-OTHERDOC_VALIDTODATE.
        ls_docdata_olp-IDENTRYDATE     = ls_data-OTHERDOC_IDENTRYDATE.
+       ls_docdata_olp-SYSTEMID        = LV_SYSTEMID.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
 * Заполнение таблицы телефонов (Первый телефон он же основной)
@@ -310,6 +399,7 @@ START-OF-SELECTION.
      endif.
      ls_telnedat_olp-consnumber     = '1'.
      ls_telnedat_olp-std_no         = 'X'.
+     ls_telnedat_olp-SYSTEMID        = LV_SYSTEMID.
      append ls_telnedat_olp to lt_telnedat_olp.
 * Второй телефон
      if ls_data-TELNUMBER_2 is not initial.
@@ -323,6 +413,7 @@ START-OF-SELECTION.
        endif.
        ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
        ls_telnedat_olp-std_no         = ' '.
+       ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
 * Третий телефон
@@ -337,6 +428,7 @@ START-OF-SELECTION.
        endif.
        ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
        ls_telnedat_olp-std_no         = ' '.
+       ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
 * Четвертый телефон
@@ -351,6 +443,7 @@ START-OF-SELECTION.
        endif.
        ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
        ls_telnedat_olp-std_no         = ' '.
+       ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
 * Пятый телефон
@@ -365,11 +458,13 @@ START-OF-SELECTION.
        endif.
        ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
        ls_telnedat_olp-std_no         = ' '.
+       ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
 * Заполнение адресов (первый адрес) Адрес Регистрации (ZADR_1) справочник TB009
      ls_addrdat_olp-client          = sy-mandt.
      ls_addrdat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
+     ls_addrdat_olp-SYSTEMID        = LV_SYSTEMID.
      ls_addrdat_olp-NUMBERROW       = '1'.
      ls_addrdat_olp-ADR_NOTES       = ''.
      ls_addrdat_olp-PCODE1_EXT      = '1'. " ZADR_1
@@ -387,6 +482,7 @@ START-OF-SELECTION.
 * Второй адрес - Адрес Местонахождения (ZADR_2)
      ls_addrdat_olp-client          = sy-mandt.
      ls_addrdat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
+     ls_addrdat_olp-SYSTEMID        = LV_SYSTEMID.
      ls_addrdat_olp-NUMBERROW       = '2'.
      ls_addrdat_olp-ADR_NOTES       = ''.
      ls_addrdat_olp-PCODE1_EXT      = '2'. " ZADR_2
@@ -405,6 +501,7 @@ START-OF-SELECTION.
      if ls_data-ADROTHER_COUNTRY is not initial.
        ls_addrdat_olp-client          = sy-mandt.
        ls_addrdat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
+       ls_addrdat_olp-SYSTEMID        = LV_SYSTEMID.
        ls_addrdat_olp-NUMBERROW       = '3'.
        ls_addrdat_olp-ADR_NOTES       = ''.
        ls_addrdat_olp-PCODE1_EXT      = '3'. " ZADR_3
@@ -431,7 +528,28 @@ START-OF-SELECTION.
    modify ztb_telnedat_olp from table lt_telnedat_olp.
    modify ZTB_PRELOADBPCRD from table lt_data_inferr.
    commit work and wait.
-
+* Формируем отчет в краткой форме
+   select *
+     into corresponding fields of table lt_augrp
+     from TB037  as a
+     join TB037T as b
+       on a~AUOBJ = b~AUOBJ
+      and a~AUGRP = b~AUGRP
+    where a~AUGRP = augrp.
+   read table lt_augrp into ls_augrp index 1.
+   if sy-subrc ne 0.
+     MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+           WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+   endif.
+   ls_OLPCREATEREP-PROCESS_NUMBER = lv_olp_req_id.
+   ls_OLPCREATEREP-SYSTEMID       = LV_SYSTEMID.
+   ls_OLPCREATEREP-AUGRP          = ls_augrp-AUGRP.
+   ls_OLPCREATEREP-AUOBJ          = ls_augrp-AUOBJ.
+   ls_OLPCREATEREP-BEZ50          = ls_augrp-BEZ50.
+   ls_OLPCREATEREP-CREATED_BY     = SY-UNAME.
+   ls_OLPCREATEREP-CREATE_DATE    = SY-DATUM.
+   ls_OLPCREATEREP-CREATE_TIME    = SY-UZEIT.
+   append ls_OLPCREATEREP to lt_OLPCREATEREP.
 * Вывод данных на экран
    PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'.  " вывод на экран
    PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'. " вывод на экран
