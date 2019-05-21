@@ -14,8 +14,8 @@ data:
 
 selection-screen begin of block file_select with frame title text-100.
 
-  parameters: p_fname TYPE ZED_SSV_FILENAME OBLIGATORY.
-  parameters: systemid TYPE CRMT_PROCESS_TYPE_DB AS LISTBOX VISIBLE LENGTH 60 obligatory.
+  parameters: p_fname  TYPE ZED_SSV_FILENAME OBLIGATORY.
+  parameters: systemid TYPE ZED_SSV_OLP_SYSTEMS_ID AS LISTBOX VISIBLE LENGTH 60 obligatory.
   parameters: augrp    TYPE BU_AUGRP AS LISTBOX VISIBLE LENGTH 60 OBLIGATORY.
 
 selection-screen end of block file_select.
@@ -241,17 +241,18 @@ START-OF-SELECTION.
           changing <fs_data>.
 * Если ошибка то записываем инф и переходим к след записи
         if lv_fld_index_err is not initial.
-          ls_data_inferr-CLIENT      = sy-mandt.
-          ls_data_inferr-EXTERNALID  = ls_data-EXTERNAL_ID.
-          ls_data_inferr-SYSTEMID    = LV_SYSTEMID.
-          ls_data_inferr-CSVROWNUM   = lv_curr_row_idx.
-          ls_data_inferr-ERROR_TXT   = lv_error_txt.
-          ls_data_inferr-ERROR_IDX   = lv_fld_index_err.
-          ls_data_inferr-ERROR_VAL   = <fs_data>.
-          ls_data_inferr-FILENAME    = lv_filename.
-          ls_data_inferr-CREATED_BY  = sy-uname.
-          ls_data_inferr-CREATE_DATE = sy-datum.
-          ls_data_inferr-CREATE_TIME = sy-uzeit.
+          ls_data_inferr-CLIENT         = sy-mandt.
+          ls_data_inferr-EXTERNALID     = ls_data-EXTERNAL_ID.
+          ls_data_inferr-PROCESS_NUMBER = lv_olp_req_id.
+          ls_data_inferr-SYSTEMID       = LV_SYSTEMID.
+          ls_data_inferr-CSVROWNUM      = lv_curr_row_idx.
+          ls_data_inferr-ERROR_TXT      = lv_error_txt.
+          ls_data_inferr-ERROR_IDX      = lv_fld_index_err.
+          ls_data_inferr-ERROR_VAL      = <fs_data>.
+          ls_data_inferr-FILENAME       = lv_filename.
+          ls_data_inferr-CREATED_BY     = sy-uname.
+          ls_data_inferr-CREATE_DATE    = sy-datum.
+          ls_data_inferr-CREATE_TIME    = sy-uzeit.
           append ls_data_inferr to lt_data_inferr.
           clear lv_fld_index_err.
           lv_record_err_flg = 'X'.
@@ -347,24 +348,25 @@ START-OF-SELECTION.
            ls_main_data-ZREP_TWR = ls_zbut0000000001-ZZUOA.
          endif.
        endif.
-
      endif.
      append ls_main_data to lt_main_data.
 * Заполнение документов
      move-corresponding ls_data to ls_docdata_olp.
-     ls_docdata_olp-client     = sy-mandt.
-     ls_docdata_olp-SYSTEMID   = LV_SYSTEMID.
-     ls_docdata_olp-NUMBERROW  = 1.
+     ls_docdata_olp-client         = sy-mandt.
+     ls_docdata_olp-SYSTEMID       = LV_SYSTEMID.
+     ls_docdata_olp-NUMBERROW      = 1.
+     ls_docdata_olp-PROCESS_NUMBER = lv_olp_req_id.
      append ls_docdata_olp to lt_docdata_olp.
 * Заполнение документа СНИЛС
      if ls_data-SNILSDOCNUMBER is not initial.
        clear ls_docdata_olp.
-       ls_docdata_olp-client      = sy-mandt.
-       ls_docdata_olp-EXTERNAL_ID = ls_data-EXTERNAL_ID.
-       ls_docdata_olp-TYPEDOC     = '83'. " СНИЛС
-       ls_docdata_olp-NUMBERDOC   = ls_data-SNILSDOCNUMBER.
-       ls_docdata_olp-NUMBERROW   = 2.
-       ls_docdata_olp-SYSTEMID    = LV_SYSTEMID.
+       ls_docdata_olp-client         = sy-mandt.
+       ls_docdata_olp-EXTERNAL_ID    = ls_data-EXTERNAL_ID.
+       ls_docdata_olp-TYPEDOC        = '83'. " СНИЛС
+       ls_docdata_olp-NUMBERDOC      = ls_data-SNILSDOCNUMBER.
+       ls_docdata_olp-NUMBERROW      = 2.
+       ls_docdata_olp-SYSTEMID       = LV_SYSTEMID.
+       ls_docdata_olp-PROCESS_NUMBER = lv_olp_req_id.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
 * Заполнение документа другого типа
@@ -383,6 +385,7 @@ START-OF-SELECTION.
        ls_docdata_olp-IDVALIDTODATE   = ls_data-OTHERDOC_VALIDTODATE.
        ls_docdata_olp-IDENTRYDATE     = ls_data-OTHERDOC_IDENTRYDATE.
        ls_docdata_olp-SYSTEMID        = LV_SYSTEMID.
+       ls_docdata_olp-PROCESS_NUMBER  = lv_olp_req_id.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
 * Заполнение таблицы телефонов (Первый телефон он же основной)
@@ -550,6 +553,8 @@ START-OF-SELECTION.
    ls_OLPCREATEREP-CREATE_DATE    = SY-DATUM.
    ls_OLPCREATEREP-CREATE_TIME    = SY-UZEIT.
    append ls_OLPCREATEREP to lt_OLPCREATEREP.
+   modify ZTB_OLPCREATEREP from table lt_OLPCREATEREP.
+   commit work and wait.
 * Вывод данных на экран
    PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'.  " вывод на экран
    PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'. " вывод на экран
