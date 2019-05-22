@@ -391,6 +391,7 @@ START-OF-SELECTION.
 * Заполнение таблицы телефонов (Первый телефон он же основной)
      ls_telnedat_olp-client          = sy-mandt.
      ls_telnedat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
+     ls_telnedat_olp-PROCESS_NUMBER  = lv_olp_req_id.
      ls_telnedat_olp-NUMBERROW       = '1'.
      ls_telnedat_olp-COMM_NOTES      = ls_data-TELNUMBER_1R.
      ls_telnedat_olp-TELEPHONE       = ls_data-TELNUMBER_1.
@@ -402,7 +403,7 @@ START-OF-SELECTION.
      endif.
      ls_telnedat_olp-consnumber     = '1'.
      ls_telnedat_olp-std_no         = 'X'.
-     ls_telnedat_olp-SYSTEMID        = LV_SYSTEMID.
+     ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
      append ls_telnedat_olp to lt_telnedat_olp.
 * Второй телефон
      if ls_data-TELNUMBER_2 is not initial.
@@ -417,6 +418,7 @@ START-OF-SELECTION.
        ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
        ls_telnedat_olp-std_no         = ' '.
        ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
+       ls_telnedat_olp-PROCESS_NUMBER = lv_olp_req_id.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
 * Третий телефон
@@ -432,6 +434,7 @@ START-OF-SELECTION.
        ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
        ls_telnedat_olp-std_no         = ' '.
        ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
+       ls_telnedat_olp-PROCESS_NUMBER = lv_olp_req_id.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
 * Четвертый телефон
@@ -447,6 +450,7 @@ START-OF-SELECTION.
        ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
        ls_telnedat_olp-std_no         = ' '.
        ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
+       ls_telnedat_olp-PROCESS_NUMBER = lv_olp_req_id.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
 * Пятый телефон
@@ -462,12 +466,14 @@ START-OF-SELECTION.
        ls_telnedat_olp-consnumber     = ls_telnedat_olp-NUMBERROW.
        ls_telnedat_olp-std_no         = ' '.
        ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
+       ls_telnedat_olp-PROCESS_NUMBER = lv_olp_req_id.
        append ls_telnedat_olp to lt_telnedat_olp.
      endif.
 * Заполнение адресов (первый адрес) Адрес Регистрации (ZADR_1) справочник TB009
      ls_addrdat_olp-client          = sy-mandt.
      ls_addrdat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
      ls_addrdat_olp-SYSTEMID        = LV_SYSTEMID.
+     ls_addrdat_olp-PROCESS_NUMBER = lv_olp_req_id.
      ls_addrdat_olp-NUMBERROW       = '1'.
      ls_addrdat_olp-ADR_NOTES       = ''.
      ls_addrdat_olp-PCODE1_EXT      = '1'. " ZADR_1
@@ -486,6 +492,7 @@ START-OF-SELECTION.
      ls_addrdat_olp-client          = sy-mandt.
      ls_addrdat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
      ls_addrdat_olp-SYSTEMID        = LV_SYSTEMID.
+     ls_addrdat_olp-PROCESS_NUMBER = lv_olp_req_id.
      ls_addrdat_olp-NUMBERROW       = '2'.
      ls_addrdat_olp-ADR_NOTES       = ''.
      ls_addrdat_olp-PCODE1_EXT      = '2'. " ZADR_2
@@ -505,6 +512,7 @@ START-OF-SELECTION.
        ls_addrdat_olp-client          = sy-mandt.
        ls_addrdat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
        ls_addrdat_olp-SYSTEMID        = LV_SYSTEMID.
+       ls_addrdat_olp-PROCESS_NUMBER = lv_olp_req_id.
        ls_addrdat_olp-NUMBERROW       = '3'.
        ls_addrdat_olp-ADR_NOTES       = ''.
        ls_addrdat_olp-PCODE1_EXT      = '3'. " ZADR_3
@@ -532,29 +540,12 @@ START-OF-SELECTION.
    modify ZTB_PRELOADBPCRD from table lt_data_inferr.
    commit work and wait.
 * Формируем отчет в краткой форме
-   select *
-     into corresponding fields of table lt_augrp
-     from TB037  as a
-     join TB037T as b
-       on a~AUOBJ = b~AUOBJ
-      and a~AUGRP = b~AUGRP
-    where a~AUGRP = augrp.
-   read table lt_augrp into ls_augrp index 1.
-   if sy-subrc ne 0.
-     MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
-           WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
-   endif.
-   ls_OLPCREATEREP-PROCESS_NUMBER = lv_olp_req_id.
-   ls_OLPCREATEREP-SYSTEMID       = LV_SYSTEMID.
-   ls_OLPCREATEREP-AUGRP          = ls_augrp-AUGRP.
-   ls_OLPCREATEREP-AUOBJ          = ls_augrp-AUOBJ.
-   ls_OLPCREATEREP-BEZ50          = ls_augrp-BEZ50.
-   ls_OLPCREATEREP-CREATED_BY     = SY-UNAME.
-   ls_OLPCREATEREP-CREATE_DATE    = SY-DATUM.
-   ls_OLPCREATEREP-CREATE_TIME    = SY-UZEIT.
-   append ls_OLPCREATEREP to lt_OLPCREATEREP.
-   modify ZTB_OLPCREATEREP from table lt_OLPCREATEREP.
-   commit work and wait.
+   CALL FUNCTION 'ZFM_UTL_SSV_SHORT_FORM_CRTREP'
+     EXPORTING IV_PROCESS_NUMBER = lv_olp_req_id
+               IV_SYSTEMID       = LV_SYSTEMID
+               IV_AUGRP          = augrp
+               IV_COMMIT         = 'X'
+               .
 * Вывод данных на экран
    PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'.  " вывод на экран
    PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'. " вывод на экран
