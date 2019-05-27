@@ -134,7 +134,8 @@ START-OF-SELECTION.
     lt_data_noterr  type STANDARD TABLE OF ZTB_PRELOADBPCRD,
     ls_data_noterr  type ZTB_PRELOADBPCRD,
     ls_OLPCREATEREP type ZTB_OLPCREATEREP,
-    lt_OLPCREATEREP type standard table of ZTB_OLPCREATEREP.
+    lt_OLPCREATEREP type standard table of ZTB_OLPCREATEREP,
+    lt_tab_err      type ztb_sim_string.
 
   perform get_req_fld.
   perform get_skip_fld.
@@ -182,7 +183,8 @@ START-OF-SELECTION.
   lr_data_descr ?= cl_abap_typedescr=>describe_by_data( ls_data ).
 
 *Генерация номера вызова загрузки портфеля просроченных ссуд
-  data: lv_olp_req_id type ZED_SSV_OLPBPLR.
+  data: lv_olp_req_id    type ZED_SSV_OLPBPLR,
+        lv_processnumber type zed_ssv_bpl_processnumber.
   CALL FUNCTION 'NUMBER_GET_NEXT'
     EXPORTING
       nr_range_nr                   = '00'
@@ -209,6 +211,7 @@ START-OF-SELECTION.
     MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
             WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
   ENDIF.
+  lv_processnumber  = lv_olp_req_id.
 
   clear lv_record_err_flg.
   LV_SYSTEMID           = systemid.
@@ -260,6 +263,13 @@ START-OF-SELECTION.
         endif.
 * Если ошибок нет то продолжаем обработку полей
         <lv_value> = <fs_data>.
+* Логический контроль
+        perform check_logical
+             using lv_curr_tab_idx
+                   <ls_component>-type_kind
+                   <ls_component>-name
+                   <lv_value>
+          changing lt_tab_err.
       endloop.
 * Конец: Проход по каждому полю таблицы csv
       if lv_record_err_flg eq 'X'.
@@ -541,7 +551,7 @@ START-OF-SELECTION.
    commit work and wait.
 * Формируем отчет в краткой форме
    CALL FUNCTION 'ZFM_UTL_SSV_SHORT_FORM_CRTREP'
-     EXPORTING IV_PROCESS_NUMBER = lv_olp_req_id
+     EXPORTING IV_PROCESS_NUMBER = lv_processnumber
                IV_SYSTEMID       = LV_SYSTEMID
                IV_AUGRP          = augrp
                IV_COMMIT         = 'X'
@@ -552,6 +562,39 @@ START-OF-SELECTION.
    WRITE 'Создан портфель просроченных ссуд под номером: '.
    WRITE lv_olp_req_id.
    WRITE /.
+
+* Подпрограмма check_logical - логический контроль полей в csv
+form check_logical
+  using i_index     type sytabix
+        i_type_kind type abap_typekind
+        i_compname  type abap_compname
+        i_value     type any
+  changing p_sim_string_value type ztb_sim_string.
+  DATA: LS_ID type ZCRMT_BUPA_IL_IDENTIFICATION.
+  if i_compname eq 'TYPEDOC'.
+    ls_id-identificationtype   = i_value.
+  endif.
+
+  if i_compname eq 'SERIALDOC'.
+    ls_id-zzafld000012         = i_value.
+  endif.
+
+  if i_compname eq 'NUMBERDOC'.
+    ls_id-identificationnumber = i_value.
+  endif.
+
+  if i_compname eq 'IDINSTITUTEDOC'.
+    ls_id-zzafld000011         = i_value.
+  endif.
+
+  if i_compname eq 'IDENTRYDATE'.
+    LS_ID-identrydate          = i_value.
+    CALL FUNCTION 'Z_FM_BP_SIM_CHECK_DOCUMENT'
+      EXPORTING IS_ID    = LS_ID
+      IMPORTING ET_ERROR = p_sim_string_value.
+  endif.
+
+endform.
 
 * Подпрограмма check_format - форматный контроль полей в csv
 form check_format
