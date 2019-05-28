@@ -1,0 +1,54 @@
+﻿FUNCTION ZFM_UTL_SSV_SHORT_FORM_CRTREP .
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"  IMPORTING
+*"     REFERENCE(IV_PROCESS_NUMBER) TYPE  ZED_SSV_BPL_PROCESSNUMBER
+*"     REFERENCE(IV_SYSTEMID) TYPE  ZED_SSV_OLP_SYSTEMS_ID
+*"     REFERENCE(IV_AUGRP) TYPE  BU_AUGRP
+*"     REFERENCE(IV_COMMIT) TYPE  CHAR1 DEFAULT 'X'
+*"  EXPORTING
+*"     REFERENCE(EV_RESULT) TYPE  TEXT255
+*"----------------------------------------------------------------------
+**********************************
+* UBRR
+* 22.05.2019
+* Севастьянов С.В.
+* Создание отчета в краткой форме по загрузке портфеля просроченных ссуд
+**********************************
+*"----------------------------------------------------------------------
+data:
+     ls_OLPCREATEREP type ZTB_OLPCREATEREP,
+     lt_OLPCREATEREP type standard table of ZTB_OLPCREATEREP,
+     lt_augrp type standard table of ZTB_OLPCREATEREP,
+     ls_augrp type ZTB_OLPCREATEREP.
+* Формируем отчет в краткой форме
+   select *
+     into corresponding fields of table lt_augrp
+     from TB037  as a
+     join TB037T as b
+       on a~AUOBJ = b~AUOBJ
+      and a~AUGRP = b~AUGRP
+    where a~AUGRP = iv_augrp.
+   read table lt_augrp into ls_augrp index 1.
+   if sy-subrc ne 0.
+*     MESSAGE ID sy-msgid TYPE sy-msgty NUMBER sy-msgno
+*           WITH sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+     EV_RESULT = 'ERROR: Не найдена группа полномочий при сохранении краткой формы отчета о загрузке портфеля!'.
+   endif.
+   ls_OLPCREATEREP-PROCESS_NUMBER = IV_PROCESS_NUMBER.
+   ls_OLPCREATEREP-SYSTEMID       = IV_SYSTEMID.
+   ls_OLPCREATEREP-AUGRP          = ls_augrp-AUGRP.
+   ls_OLPCREATEREP-AUOBJ          = ls_augrp-AUOBJ.
+   ls_OLPCREATEREP-BEZ50          = ls_augrp-BEZ50.
+   ls_OLPCREATEREP-CREATED_BY     = SY-UNAME.
+   ls_OLPCREATEREP-CREATE_DATE    = SY-DATUM.
+   ls_OLPCREATEREP-CREATE_TIME    = SY-UZEIT.
+   append ls_OLPCREATEREP to lt_OLPCREATEREP.
+   modify ZTB_OLPCREATEREP from table lt_OLPCREATEREP.
+
+   IF IV_COMMIT EQ 'X'.
+     commit work and wait.
+   ENDIF.
+   EV_RESULT = 'OK'.
+
+ENDFUNCTION.
