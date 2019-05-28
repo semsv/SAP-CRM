@@ -135,7 +135,8 @@ START-OF-SELECTION.
     ls_data_noterr  type ZTB_PRELOADBPCRD,
     ls_OLPCREATEREP type ZTB_OLPCREATEREP,
     lt_OLPCREATEREP type standard table of ZTB_OLPCREATEREP,
-    lt_tab_err      type ztb_sim_string.
+    lt_tab_err      type standard table of string,
+    LS_ID           type ZCRMT_BUPA_IL_IDENTIFICATION.
 
   perform get_req_fld.
   perform get_skip_fld.
@@ -270,6 +271,26 @@ START-OF-SELECTION.
                    <ls_component>-name
                    <lv_value>
           changing lt_tab_err.
+* Если ошибка то записываем инф и переходим к след записи
+        if lv_fld_index_err is not initial.
+          read table lt_tab_err into lv_error_txt index 1.
+          ls_data_inferr-CLIENT         = sy-mandt.
+          ls_data_inferr-EXTERNALID     = ls_data-EXTERNAL_ID.
+          ls_data_inferr-PROCESS_NUMBER = lv_olp_req_id.
+          ls_data_inferr-SYSTEMID       = LV_SYSTEMID.
+          ls_data_inferr-CSVROWNUM      = lv_curr_row_idx.
+          ls_data_inferr-ERROR_TXT      = lv_error_txt.
+          ls_data_inferr-ERROR_IDX      = lv_fld_index_err.
+          ls_data_inferr-ERROR_VAL      = <lv_value>.
+          ls_data_inferr-FILENAME       = lv_filename.
+          ls_data_inferr-CREATED_BY     = sy-uname.
+          ls_data_inferr-CREATE_DATE    = sy-datum.
+          ls_data_inferr-CREATE_TIME    = sy-uzeit.
+          append ls_data_inferr to lt_data_inferr.
+          clear lv_fld_index_err.
+          lv_record_err_flg = 'X'.
+          exit.
+        endif.
       endloop.
 * Конец: Проход по каждому полю таблицы csv
       if lv_record_err_flg eq 'X'.
@@ -548,7 +569,7 @@ START-OF-SELECTION.
    modify ztb_addrdat_olp from table lt_addrdat_olp.
    modify ztb_telnedat_olp from table lt_telnedat_olp.
    modify ZTB_PRELOADBPCRD from table lt_data_inferr.
-   commit work and wait.
+*   commit work and wait.
 * Формируем отчет в краткой форме
    CALL FUNCTION 'ZFM_UTL_SSV_SHORT_FORM_CRTREP'
      EXPORTING IV_PROCESS_NUMBER = lv_processnumber
@@ -569,9 +590,15 @@ form check_logical
         i_type_kind type abap_typekind
         i_compname  type abap_compname
         i_value     type any
-  changing p_sim_string_value type ztb_sim_string.
-  DATA: LS_ID type ZCRMT_BUPA_IL_IDENTIFICATION.
+  changing p_sim_string_value type ZTB_SIM_STRING.
+
+  DATA: LV_RESULT    TYPE ABAP_BOOL,
+        LV_STR_RES   TYPE STRING,
+        LV_STR_DAT   TYPE STRING,
+        LV_ID_NUMBER TYPE BU_ID_NUMBER.
+
   if i_compname eq 'TYPEDOC'.
+    clear ls_id.
     ls_id-identificationtype   = i_value.
   endif.
 
@@ -592,8 +619,44 @@ form check_logical
     CALL FUNCTION 'Z_FM_BP_SIM_CHECK_DOCUMENT'
       EXPORTING IS_ID    = LS_ID
       IMPORTING ET_ERROR = p_sim_string_value.
+    if p_sim_string_value[] is not initial.
+      lv_fld_index_err = i_index.
+    endif.
   endif.
-
+* Проверка СНИЛС (Идентификационный номер ПФР)
+  if i_compname eq 'SNILSDOCNUMBER'.
+    LV_ID_NUMBER = i_value.
+    if LV_ID_NUMBER is not initial.
+      CALL FUNCTION 'ZDM_HRDATA_CHECK_PFR'
+        EXPORTING  IV_PFR_NUM  = LV_ID_NUMBER
+        IMPORTING  EV_RESULT   = LV_RESULT
+      .
+      if LV_RESULT ne 'X'.
+        append 'Ошибка - проверка СНИЛС, неверный ИД номер ПФР' to p_sim_string_value.
+        lv_fld_index_err = i_index.
+      endif.
+    endif.
+  endif.
+* Проверка телефонов на автоинформатор
+  if (
+     i_compname eq 'TELNUMBER_1' or
+     i_compname eq 'TELNUMBER_2' or
+     i_compname eq 'TELNUMBER_3' or
+     i_compname eq 'TELNUMBER_4' or
+     i_compname eq 'TELNUMBER_5'
+     ) and i_value is not initial.
+     LV_STR_DAT = i_value.
+     CALL FUNCTION 'Z_FM_SIM_CHECK_STOP_PHONE'
+       EXPORTING IV_PHONE    = LV_STR_DAT
+                 IV_SHOW_MSG = ' '
+       IMPORTING EV_RESULT   = LV_STR_RES.
+     .
+     IF LV_STR_RES is not initial and
+        LV_STR_RES ne 'OK'.
+       append LV_STR_RES to p_sim_string_value.
+       lv_fld_index_err = i_index.
+     ENDIF.
+  endif.
 endform.
 
 * Подпрограмма check_format - форматный контроль полей в csv
