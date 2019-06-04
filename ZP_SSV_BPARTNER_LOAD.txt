@@ -1,4 +1,4 @@
-﻿*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
 *& Include ZP_SSV_BPARTNER_LOAD_TOP                          Report ZP_SSV_BPARTNER_LOAD
 *&
 *&---------------------------------------------------------------------*
@@ -253,6 +253,7 @@ START-OF-SELECTION.
           ls_data_inferr-ERROR_TXT      = lv_error_txt.
           ls_data_inferr-ERROR_IDX      = lv_fld_index_err.
           ls_data_inferr-ERROR_VAL      = <fs_data>.
+          ls_data_inferr-LOGICAL        = 0. " Форматный контроль
           ls_data_inferr-FILENAME       = lv_filename.
           ls_data_inferr-CREATED_BY     = sy-uname.
           ls_data_inferr-CREATE_DATE    = sy-datum.
@@ -264,6 +265,33 @@ START-OF-SELECTION.
         endif.
 * Если ошибок нет то продолжаем обработку полей
         <lv_value> = <fs_data>.
+      endloop.
+* Конец: Проход по каждому полю таблицы csv
+      if lv_record_err_flg eq 'X'.
+* Если взведен флаг ошибки то ничего пока не делаем просто очищаем сам флажок
+        clear lv_record_err_flg.
+      else.
+* А если ошибок небыло, то выполним логический контроль,
+*   если нужно пометим записи для дальнейшей обработки в интерфейсе
+*    loop at lt_table assigning <fs_table> from 2.
+*      lv_curr_row_idx = sy-tabix.
+*      split <fs_table> at ';' into table lt_flddata.
+      clear lv_counter_skip.
+* Начало: Проход по каждому полю таблицы csv
+      LOOP AT lr_data_descr->components ASSIGNING <ls_component>.
+        lv_curr_tab_idx = sy-tabix.
+        READ TABLE lt_skip_fld WITH TABLE KEY value = sy-tabix TRANSPORTING NO FIELDS.
+        if sy-subrc eq 0.
+          lv_counter_skip = lv_counter_skip + 1.
+          continue.
+        endif.
+        lv_curr_tab_idx = lv_curr_tab_idx - lv_counter_skip.
+
+        READ TABLE lt_flddata assigning <fs_data> INDEX lv_curr_tab_idx.
+        IF sy-subrc <> 0.
+          EXIT. " значения в таблице кончились, дальше идти по полям смысла нет
+        ENDIF.
+        ASSIGN COMPONENT <ls_component>-name OF STRUCTURE ls_data TO <lv_value>.
 * Логический контроль
         perform check_logical
              using lv_curr_tab_idx
@@ -282,6 +310,7 @@ START-OF-SELECTION.
           ls_data_inferr-ERROR_TXT      = lv_error_txt.
           ls_data_inferr-ERROR_IDX      = lv_fld_index_err.
           ls_data_inferr-ERROR_VAL      = <lv_value>.
+          ls_data_inferr-LOGICAL        = 1. " Логический контроль
           ls_data_inferr-FILENAME       = lv_filename.
           ls_data_inferr-CREATED_BY     = sy-uname.
           ls_data_inferr-CREATE_DATE    = sy-datum.
@@ -292,19 +321,16 @@ START-OF-SELECTION.
           exit.
         endif.
       endloop.
-* Конец: Проход по каждому полю таблицы csv
-      if lv_record_err_flg eq 'X'.
-* Если взведен флаг ошибки то ничего пока не делаем просто очищаем сам флажок
-        clear lv_record_err_flg.
-      else.
-* А если ошибок небыло, то
+*    endloop.
 * Добавляем запись в таблицу основных данных которые предварительно проверены по формату
         append ls_data TO lt_data.
+        if lv_record_err_flg ne 'X'.
 * Исключаем эту запись если ранее она была в таблице ошибок
-        clear ls_data_noterr.
-        ls_data_noterr-EXTERNALID = ls_data-EXTERNAL_ID.
-        ls_data_noterr-SYSTEMID   = LV_SYSTEMID.
-        append ls_data_noterr to lt_data_noterr.
+          clear ls_data_noterr.
+          ls_data_noterr-EXTERNALID = ls_data-EXTERNAL_ID.
+          ls_data_noterr-SYSTEMID   = LV_SYSTEMID.
+          append ls_data_noterr to lt_data_noterr.
+        endif.
       endif.
     endloop.
 
@@ -570,6 +596,15 @@ START-OF-SELECTION.
    modify ztb_telnedat_olp from table lt_telnedat_olp.
    modify ZTB_PRELOADBPCRD from table lt_data_inferr.
 *   commit work and wait.
+* Поиск и маркировка по документам
+   CALL FUNCTION 'ZFM_UTL_SSV_FIND_DOCU_DATA_BP'
+     EXPORTING IV_PROCESS_NUMBER = lv_processnumber.
+* Поиск и маркировка по телефонам
+   CALL FUNCTION 'ZFM_UTL_SSV_FIND_TELE_DATA_BP'
+     EXPORTING IV_PROCESS_NUMBER = lv_processnumber.
+* Поиск и маркировка по адресам
+   CALL FUNCTION 'ZFM_UTL_SSV_FIND_ADDR_DATA_BP'
+     EXPORTING IV_PROCESS_NUMBER = lv_processnumber.
 * Формируем отчет в краткой форме
    CALL FUNCTION 'ZFM_UTL_SSV_SHORT_FORM_CRTREP'
      EXPORTING IV_PROCESS_NUMBER = lv_processnumber
