@@ -1,0 +1,422 @@
+﻿*&---------------------------------------------------------------------*
+*& Include ZP_SSV_PRTNRDAT_EDIT_TAB_TOP                      Report ZP_SSV_PRTNRDAT_EDIT_TAB
+*&
+*&---------------------------------------------------------------------*
+
+REPORT   ZP_SSV_PRTNRDAT_EDIT_TAB.
+TYPE-POOLS: vrm.
+
+DATA:
+  gr_container_d0100   type ref to cl_gui_custom_container
+  ,gr_grid_d0100       type ref to cl_gui_alv_grid
+*  ,gr_events_d0100     type ref to lcl_events_d0100
+  .
+types: begin of g_ty_s_scr_opt,
+         edit_mode         type i,
+       end of g_ty_s_scr_opt.
+
+data:
+  gt_outtab            type standard table of ZTB_PRTNRDAT_OLP,
+  gs_screen_option     type g_ty_s_scr_opt.
+
+constants: con_true              type char1     value 'X',
+           con_exit              type sy-ucomm  value 'ВЫХОД',
+           con_canc              type sy-ucomm  value 'ОТМЕНА',
+           con_back              type sy-ucomm  value 'НАЗАД',
+           con_save              type sy-ucomm  value 'СОХРАНИТЬ',
+           con_str               type lvc_fname value 'ZTB_PRTNRDAT_OLP',
+           con_on                type char1     value '1',
+           con_off               type char1     value '0',
+           grid_mode_display     type i         value 0,
+           grid_mode_change      type i         value 1,
+           con_edit_mode_display type i         value 1,
+           con_edit_mode_change  type i         value 2
+           .
+
+data: g_okcode type sy-ucomm.
+
+selection-screen begin of block base_options with frame title text-100.
+
+  parameters: lv_sysid  TYPE ZED_SSV_OLP_SYSTEMS_ID AS LISTBOX VISIBLE LENGTH 60 obligatory.
+  parameters: lv_augrp  TYPE BU_AUGRP AS LISTBOX VISIBLE LENGTH 60 OBLIGATORY.
+  parameters: lvprcssd  TYPE CHAR1 AS LISTBOX VISIBLE LENGTH 60 OBLIGATORY.
+  parameters: lv_prcss  TYPE ZED_SSV_BPL_PROCESSNUMBER.
+
+
+selection-screen end of block base_options.
+
+AT SELECTION-SCREEN OUTPUT.
+" Начало: создаем элемент раскрывающийся список
+data:
+  name            TYPE vrm_id,
+  list            TYPE vrm_values,
+  value           LIKE LINE OF list.
+
+  clear list[].
+  data:
+    ls_olpsyst_ctlg TYPE ZTB_OLPSYST_CTLG,
+    lt_olpsyst_ctlg TYPE STANDARD TABLE OF ZTB_OLPSYST_CTLG.
+
+  select *
+    into table lt_olpsyst_ctlg
+    from ZTB_OLPSYST_CTLG.
+
+  LOOP AT lt_olpsyst_ctlg INTO ls_olpsyst_ctlg.
+    value-key  = ls_olpsyst_ctlg-ID.
+    value-text = ls_olpsyst_ctlg-NAME.
+    append value to list.
+  ENDLOOP.
+
+ name = 'lv_sysid'.
+ CALL FUNCTION 'VRM_SET_VALUES' EXPORTING id = name values = list.
+" Конец: создаем элемент раскрывающийся список
+
+" Начало: создаем элемент раскрывающийся список
+ clear list[].
+ data:
+   lt_augrp type standard table of ZTB_OLPCREATEREP,
+   ls_augrp type ZTB_OLPCREATEREP.
+
+ select *
+   into corresponding fields of table lt_augrp
+   from TB037  as a
+   join TB037T as b
+     on a~AUOBJ = b~AUOBJ
+    and a~AUGRP = b~AUGRP.
+
+  LOOP AT lt_augrp INTO ls_augrp.
+    value-key  = ls_augrp-AUGRP.
+    value-text = ls_augrp-BEZ50.
+    append value to list.
+  ENDLOOP.
+
+ name = 'lv_augrp'.
+ CALL FUNCTION 'VRM_SET_VALUES' EXPORTING id = name values = list.
+" Конец: создаем элемент раскрывающийся список
+
+ " Начало: создаем элемент раскрывающийся список
+ clear list[].
+ data:
+   lt_prccsd type standard table of ZTB_OLP_MSG_CTLG,
+   ls_prccsd type ZTB_OLP_MSG_CTLG.
+
+ select *
+   into corresponding fields of table lt_prccsd
+   from ZTB_OLP_MSG_CTLG.
+
+  LOOP AT lt_prccsd INTO ls_prccsd.
+    value-key  = ls_prccsd-PROCESSED.
+    value-text = ls_prccsd-DESCRIPTION.
+    append value to list.
+  ENDLOOP.
+
+ name = 'lvprcssd'.
+ CALL FUNCTION 'VRM_SET_VALUES' EXPORTING id = name values = list.
+" Конец: создаем элемент раскрывающийся список
+
+ START-OF-SELECTION.
+
+  DATA: lt_olpcreaterep TYPE STANDARD TABLE OF ZTB_OLPCREATEREP,
+        ls_olpcreaterep TYPE ZTB_OLPCREATEREP.
+
+   if lv_prcss is initial.
+     select *
+       into table lt_olpcreaterep
+       from ZTB_OLPCREATEREP
+      where AUGRP            = lv_augrp
+        and SYSTEMID         = lv_sysid.
+   else.
+     select *
+       into table lt_olpcreaterep
+       from ZTB_OLPCREATEREP
+      where AUGRP            = lv_augrp
+        and SYSTEMID         = lv_sysid
+        and PROCESS_NUMBER   = lv_prcss.
+   endif.
+
+
+   loop at lt_olpcreaterep into ls_olpcreaterep.
+     lv_prcss = ls_olpcreaterep-PROCESS_NUMBER.
+     select *
+       into table gt_outtab
+       from ZTB_PRTNRDAT_OLP
+      where PROCESS_NUMBER = lv_prcss    " Номер процесса
+        and SYSTEMID       = lv_sysid.   " Уникальный идентификатор системы портф проср ссуд
+   endloop.
+*----------------------------------------------------------------------*
+* END-OF-SELECTION                                                     *
+*----------------------------------------------------------------------*
+end-of-selection.
+  call screen 100.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_prepare_container
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_prepare_container .
+
+  data: lt_fcat             type lvc_t_fcat,
+        ls_fcat             type lvc_s_fcat,
+        ls_layo             type lvc_s_layo,
+        ls_vari             type disvariant,
+        ls_prnt             type lvc_s_prnt,
+        lt_hype             type lvc_t_hype,
+        l_consistency_check type char1.
+
+  if gr_container_d0100 is initial.
+    if cl_gui_alv_grid=>offline( ) is initial.
+      create object gr_container_d0100
+                    exporting container_name = 'D0100_CONTAINER'.
+    endif.
+
+    create object gr_grid_d0100
+                  exporting i_parent = gr_container_d0100.
+
+    perform d0100_set_grid_fcat changing lt_fcat.
+
+    call method gr_grid_d0100->set_ready_for_input
+      exporting
+        i_ready_for_input = grid_mode_display.
+
+    gs_screen_option-edit_mode = con_edit_mode_display.
+
+    call method gr_grid_d0100->set_table_for_first_display
+      exporting
+        i_structure_name    = con_str
+        is_layout           = ls_layo
+      changing
+        it_outtab           = gt_outtab[]
+        it_fieldcatalog     = lt_fcat
+        .
+  endif.
+
+endform.                    " d0100_prepare_container
+
+module d0100_prepare_container output.
+  perform d0100_prepare_container.
+endmodule.                 " d0100_prepare_container  OUTPUT
+
+form d0100_set_status .
+
+  types: begin of l_ty_s_excl,
+           func type syucomm,
+         end   of l_ty_s_excl,
+         l_ty_t_excl type standard table of l_ty_s_excl.
+
+  data: lt_excl type l_ty_t_excl.
+
+  set pf-status 'D0100' excluding lt_excl.
+  set titlebar 'D0100'.
+
+endform.                    " d0100_set_status
+
+module d0100_set_status output.
+  perform d0100_set_status.
+endmodule.                 " d0100_set_status  OUTPUT
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_set_grid_fcat
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_set_grid_fcat changing ct_fcat type lvc_t_fcat.
+
+  data: ls_fcat type lvc_s_fcat,
+        l_lin   type i.
+
+  field-symbols: <fs_fcat> type lvc_s_fcat.
+
+  call function 'LVC_FIELDCATALOG_MERGE'
+    exporting
+      i_buffer_active        = ' ' " gs_test-buffer_active
+      i_structure_name       = con_str
+      i_client_never_display = con_true
+      i_bypassing_buffer     = ' ' " gs_test-bypassing_buffer
+    changing
+      ct_fieldcat            = ct_fcat[]
+    exceptions
+      inconsistent_interface = 1
+      program_error          = 2
+      others                 = 3.
+  if sy-subrc <> 0.
+    message id sy-msgid type sy-msgty number sy-msgno
+            with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  endif.
+***************************************************************
+*****   Настройка вывода названий полей в таблице (нач.)  *****
+***************************************************************
+  loop at ct_fcat assigning <fs_fcat>.
+    clear <fs_fcat>-edit.
+    <fs_fcat>-OUTPUTLEN = 15.
+    if <fs_fcat>-fieldname eq 'EXTERNAL_ID'.
+      <fs_fcat>-outputlen = 10.
+    endif.
+    if <fs_fcat>-fieldname eq 'SYSTEMID'.
+      <fs_fcat>-outputlen = 10.
+    endif.
+    if <fs_fcat>-fieldname eq 'CLIENTKIND'.
+       <fs_fcat>-scrtext_s = 'Тип клиент'.  " Короткое 10 симв
+       <fs_fcat>-scrtext_m = 'Тип клиента'. " Среднее 20 симв
+       <fs_fcat>-scrtext_l = 'Тип клиента'. " Длинное 40 символов
+       <fs_fcat>-edit      = 'X'.
+       <fs_fcat>-outputlen = 10.
+    endif.
+    if <fs_fcat>-fieldname eq 'PROCESSED'.
+       <fs_fcat>-scrtext_s = 'Тип записи'.
+       <fs_fcat>-scrtext_m = 'Тип записи'.
+       <fs_fcat>-scrtext_l = 'Тип записи'.
+       <fs_fcat>-edit      = 'X'.
+       <fs_fcat>-outputlen = 10.
+    endif.
+    if <fs_fcat>-fieldname eq 'FIRSTNAME'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'LASTNAME'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'MIDDLENAME'.
+      <fs_fcat>-scrtext_s = 'Отчество'.
+      <fs_fcat>-scrtext_m = 'Отчество'.
+      <fs_fcat>-scrtext_l = 'Отчество'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'NICKNAME'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'BIRTHNAME'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'FULLNAME'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'BIRTHPLACE'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'SEX'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'BIRTHDATE'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+
+    if <fs_fcat>-fieldname eq 'QUESTION_BKI'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'ANSWER_BKI'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'MARITALSTATUS'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'NATIONALITY'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'FATCASTATUS'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'E_MAIL'.
+      <fs_fcat>-edit      = 'X'.
+    endif.
+
+    if <fs_fcat>-fieldname eq 'ZRESULT_MSG'.
+       <fs_fcat>-scrtext_s = 'Рез. обраб'.
+       <fs_fcat>-scrtext_m = 'Результат обработки'.
+       <fs_fcat>-scrtext_l = 'Результат обработки'.
+    endif.
+  endloop.
+***************************************************************
+*****   Настройка вывода названий полей в таблице (кон.)  *****
+***************************************************************
+endform.
+
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_exit
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_exit .
+
+  data: l_okcode like sy-ucomm.
+
+  l_okcode = g_okcode.
+  clear g_okcode.
+
+  case l_okcode.
+    when con_exit or con_back or con_canc.
+      call method gr_grid_d0100->free.
+      call method gr_container_d0100->free.
+
+      call method cl_gui_cfw=>flush.
+
+      clear gr_container_d0100.
+      clear gr_grid_d0100.
+*      clear gr_events_d0100.
+
+      set screen 0.
+      leave screen.
+  endcase.
+
+endform.                    " d0100_exit
+
+*&---------------------------------------------------------------------*
+*&      Module  d0100_exit  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+module d0100_exit input.
+  perform d0100_exit.
+endmodule.                 " d0100_exit  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_fcode
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_fcode .
+
+  data: l_okcode like sy-ucomm.
+
+  l_okcode = sy-ucomm. " g_okcode.
+  clear g_okcode.
+
+  case l_okcode.
+* Обработка событий от кнопок: ВЫХОД, НАЗАД, ОТМЕНА
+    when con_exit or con_back or con_canc.
+      g_okcode = l_okcode.
+      perform d0100_exit.
+* Обработка события от кнопки СОХРАНИТЬ
+    when con_save.
+      call method gr_grid_d0100->check_changed_data.
+      modify ZTB_PRTNRDAT_OLP from table gt_outtab.
+      commit work and wait.
+* Обработка события от кнопки Просмотреть/Изменить
+    when 'TOGGLE'.                                          "#EC NOTEXT
+      data: l_edit type i.
+
+      case gs_screen_option-edit_mode.
+        when con_edit_mode_change.
+          gs_screen_option-edit_mode = con_edit_mode_display.
+          l_edit                     = con_off.
+        when con_edit_mode_display.
+          gs_screen_option-edit_mode = con_edit_mode_change.
+          l_edit                     = con_on.
+      endcase.
+
+      call method gr_grid_d0100->set_ready_for_input
+        exporting
+          i_ready_for_input = l_edit.
+  endcase.
+
+endform.                    " d0100_fcode
+
+*&---------------------------------------------------------------------*
+*&      Module  d0100_fcode  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+module d0100_fcode input.
+  perform d0100_fcode.
+endmodule.                 " d0100_fcode  INPUT
