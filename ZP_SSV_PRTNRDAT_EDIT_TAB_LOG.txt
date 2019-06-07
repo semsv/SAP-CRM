@@ -1,0 +1,363 @@
+﻿*&---------------------------------------------------------------------*
+*&  Include           ZP_SSV_PRTNRDAT_EDIT_TAB_LOG
+*&---------------------------------------------------------------------*
+* Начало: Блок переменных для вывода журнала ошибок
+data: gv_log_handle    type BALLOGHNDL,
+      gt_msg_handle    type BAL_T_MSGH,
+      gs_profile       type BAL_S_PROF,
+      g_control_handle type BALCNTHNDL,
+      gr_log_container type ref to CL_GUI_CONTAINER,
+      gr_dialogbox     type ref to CL_GUI_DIALOGBOX_CONTAINER.
+* Конец: Блок переменных для вывода журнала ошибок
+
+form ON_CLOSE_LOG.
+* ...
+  if not gv_log_handle is initial.
+    call function 'BAL_LOG_REFRESH'
+      exporting
+        i_log_handle        = gv_log_handle
+      EXCEPTIONS
+        OTHERS              = 1
+              .
+    if sy-subrc <> 0.
+       MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+         WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    endif.
+    clear gv_log_handle.
+  endif.
+
+  if not g_control_handle is initial.
+    call function 'BAL_CNTL_FREE'
+      changing
+        c_control_handle        = g_control_handle
+      EXCEPTIONS
+        OTHERS                  = 1
+        .
+    if sy-subrc <> 0.
+      MESSAGE ID SY-MSGID TYPE SY-MSGTY NUMBER SY-MSGNO
+          WITH SY-MSGV1 SY-MSGV2 SY-MSGV3 SY-MSGV4.
+    endif.
+    call method gr_dialogbox->free.
+    clear gr_dialogbox.
+    clear g_control_handle.
+    clear gt_msg_handle.
+    clear gs_profile.
+    clear gr_log_container.
+  endif.
+*  raise event on_close_obj.
+  call method cl_gui_control=>set_focus
+    exporting control = gr_grid_d0100.
+
+endform.
+
+form add_protocol_entry using I_MSGID      TYPE SYMSGID
+                              i_msgty      TYPE SYMSGTY
+                              I_MSGNO      TYPE SYMSGNO
+                              I_MSGV1      TYPE ANY
+                              I_MSGV2      TYPE ANY
+                              I_MSGV3      TYPE ANY
+                              I_MSGV4      TYPE ANY
+                              I_FIELDNAME  TYPE LVC_FNAME
+                              I_ROW_ID     TYPE INT4
+                              I_TABIX      TYPE INT4.
+
+  field-symbols: <l_char> type c.
+  field-symbols: <ls_fieldcat> type lvc_s_fcat.
+
+  data: ls_msg type bal_s_msg.
+  data: ls_msg1 type lvc_s_msg1.
+  data: ls_context type lvc_s_bals.
+  data: ls_log type bal_s_log.
+
+  if gv_log_handle is initial.
+    call function 'BAL_LOG_CREATE'
+         exporting
+              i_s_log                 = ls_log
+         importing
+              e_log_handle            = gv_log_handle
+         exceptions
+              log_header_inconsistent = 1
+              others                  = 2.
+    if sy-subrc <> 0.
+      message id sy-msgid type sy-msgty number sy-msgno
+              with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+
+    perform appl_log_set in program bcalv_appl_log
+                         using gr_grid_d0100
+                               gv_log_handle.
+  endif.
+
+* fill basic message data
+  ls_msg-msgty = i_msgty.
+  ls_msg-msgid = i_msgid.
+  ls_msg-msgno = i_msgno.
+  ls_msg-msgv1 = i_msgv1.
+  ls_msg-msgv2 = i_msgv2.
+  ls_msg-msgv3 = i_msgv3.
+  ls_msg-msgv4 = i_msgv4.
+
+* add context information
+  ls_context-row_id = i_row_id.
+  ls_context-fieldname = i_fieldname.
+  ls_context-balloghndl = gv_log_handle.
+
+  call function 'LVC_LOG_HANDLE_SET'
+       exporting
+            ir_alv = gr_grid_d0100
+            i_log  = gv_log_handle.
+
+  read table gt_fcat assigning <ls_fieldcat>
+             with key fieldname = i_fieldname.
+  if sy-subrc eq 0.
+    ls_context-col_id  = <ls_fieldcat>-col_id.
+    ls_context-seltext = <ls_fieldcat>-seltext.
+    if <ls_fieldcat>-coltext is initial.
+      ls_context-coltext = <ls_fieldcat>-scrtext_s."<ls_fieldcat>-seltext.
+    else.
+      ls_context-coltext = <ls_fieldcat>-coltext.
+    endif.
+    ls_context-col_pos = <ls_fieldcat>-col_pos.
+  endif.
+
+  ls_msg-context-tabname = 'LVC_S_BALS'.
+  assign ls_context to <l_char> casting.
+  ls_msg-context-value   = <l_char>.
+* ls_msg-context-value   = ls_context.
+
+
+* add message to log
+  data: ls_msg_handle type balmsghndl.
+  call function 'BAL_LOG_MSG_ADD'
+       exporting
+            i_log_handle   = gv_log_handle
+            i_s_msg        = ls_msg
+       importing
+            e_s_msg_handle = ls_msg_handle
+       exceptions
+            others         = 1.
+  if sy-subrc <> 0.
+    message id sy-msgid type sy-msgty number sy-msgno
+            with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  else.
+    insert ls_msg_handle into table gt_msg_handle.
+  endif.
+
+  move-corresponding ls_msg to ls_msg1.
+  ls_msg1-fieldname = i_fieldname.
+  ls_msg1-row_id    = i_row_id.
+*  append ls_msg1 to mt_protocol.
+
+  if ls_msg-msgty eq 'E' or ls_msg-msgty eq 'A'.
+
+*      delete mt_good_cells where fieldname = i_fieldname and
+*                                 row_id    = i_row_id.
+
+
+*    read table mt_good_cells
+*               with key fieldname = i_fieldname
+*                        row_id    = i_row_id
+*               transporting no fields.
+*    if sy-subrc eq 0.
+*      delete mt_good_cells index sy-tabix.
+*    endif.
+  endif.
+
+
+endform.
+
+form CREATE_DISPLAY_PROFILE using I_OPTIMIZE_COLUMNS type ABAP_BOOL
+                                  I_DISPLAY_TOOLBAR  type ABAP_BOOL.
+
+* ...
+  DATA:
+    ls_fcat TYPE bal_s_fcat,
+    ls_sort TYPE bal_s_sort.
+  FIELD-SYMBOLS:
+    <ls_fcat> TYPE bal_s_fcat.
+
+
+  CALL FUNCTION 'BAL_DSP_PROFILE_NO_TREE_GET'
+       IMPORTING
+            e_s_display_profile = gs_profile.
+
+* increase position of all fields
+  LOOP AT gs_profile-mess_fcat ASSIGNING <ls_fcat>.
+    ADD 1 TO <ls_fcat>-col_pos.
+    IF <ls_fcat>-ref_field = 'T_MSG'.
+      <ls_fcat>-outputlen = 60.
+    ENDIF.
+  ENDLOOP.
+
+* add field to field catalog on position 1.
+  CLEAR ls_fcat.
+  ls_fcat-col_pos = 1.
+  ls_fcat-outputlen = 20.
+  ls_fcat-ref_table = 'LVC_S_BALS'.
+  ls_fcat-ref_field = 'COLTEXT'.
+*  ls_fcat-hotspot   = 'X'.
+  APPEND ls_fcat TO gs_profile-mess_fcat.
+* add field as an invisible field
+  CLEAR ls_fcat.
+  ls_fcat-ref_table = 'LVC_S_BALS'.
+  ls_fcat-ref_field = 'ROW_ID'.
+  ls_fcat-no_out    = 'X'.
+  APPEND ls_fcat TO gs_profile-mess_fcat.
+* add field as an invisible field
+  CLEAR ls_fcat.
+  ls_fcat-ref_table = 'LVC_S_BALS'.
+  ls_fcat-ref_field = 'COL_ID'.
+  ls_fcat-no_out    = 'X'.
+  APPEND ls_fcat TO gs_profile-mess_fcat.
+* add field as an invisible field
+  CLEAR ls_fcat.
+  ls_fcat-ref_table = 'LVC_S_BALS'.
+  ls_fcat-ref_field = 'FIELDNAME'.
+  ls_fcat-no_out    = 'X'.
+  APPEND ls_fcat TO gs_profile-mess_fcat.
+* add field as an invisible field
+  CLEAR ls_fcat.
+  ls_fcat-ref_table = 'LVC_S_BALS'.
+  ls_fcat-ref_field = 'SELTEXT'.
+  ls_fcat-no_out    = 'X'.
+  APPEND ls_fcat TO gs_profile-mess_fcat.
+* add field as an invisible field
+*  CLEAR ls_fcat.
+*  ls_fcat-ref_table = 'LVC_S_BALS'.
+*  ls_fcat-ref_field = 'VALUE'.
+*  ls_fcat-no_out    = 'X'.
+*  APPEND ls_fcat TO es_profile-mess_fcat.
+* add field as an invisible field
+  CLEAR ls_fcat.
+  ls_fcat-ref_table = 'LVC_S_BALS'.
+  ls_fcat-ref_field = 'COL_POS'.
+  ls_fcat-no_out      = 'X'.
+  APPEND ls_fcat TO gs_profile-mess_fcat.
+* add field as an invisible field
+  CLEAR ls_fcat.
+  ls_fcat-ref_table = 'LVC_S_BALS'.
+  ls_fcat-ref_field = 'BALLOGHNDL'.
+  ls_fcat-no_out      = 'X'.
+  APPEND ls_fcat TO gs_profile-mess_fcat.
+
+* sort by sortfield and fieldname
+  CLEAR gs_profile-mess_sort.
+  CLEAR ls_sort.
+  ls_sort-spos = 1.
+  ls_sort-up = 'X'.
+  ls_sort-ref_table = 'LVC_S_BALS'.
+  ls_sort-ref_field = 'ROW_ID'.
+  APPEND ls_sort TO gs_profile-mess_sort.
+  CLEAR ls_sort.
+  ls_sort-spos = 2.
+  ls_sort-up = 'X'.
+  ls_sort-ref_table = 'LVC_S_BALS'.
+  ls_sort-ref_field = 'COL_POS'.
+  APPEND ls_sort TO gs_profile-mess_sort.
+
+* add a pushbotton on the right side of toolbar above messages
+*  es_profile-ext_push1-active    = true.
+*  es_profile-ext_push1-position  = const_push_pos_list_right.
+*  es_profile-ext_push1-def-icon_id   = icon_refresh.
+*  es_profile-ext_push1-def-quickinfo = 'Auffrischen'(ref).
+
+* set callback routine to handle user commands
+*  es_profile-clbk_ucom-userexitt = const_callback_form.
+*  es_profile-clbk_ucom-userexitp = sy-repid.
+*  es_profile-clbk_ucom-userexitf = 'USER_COMMAND'.
+
+* when a message is doubleclicked, we want to position on the field
+* which caused the error
+* "Doubleclick" is processed as a standard command to show the longtext
+* We therefore set the callback routine 'BEFORE UCOMM' to get control
+* and execute our own function
+  gs_profile-clbk_ucbf-userexitt = space.
+  gs_profile-clbk_ucbf-userexitp = 'BCALV_APPL_LOG'.
+  gs_profile-clbk_ucbf-userexitf = 'F2'.
+  gs_profile-cwidth_opt = i_optimize_columns.
+  if i_display_toolbar is initial.
+    gs_profile-no_toolbar          = 'X'.
+  endif.
+
+endform.
+
+form display_protocol using I_OPTIMIZE_COLUMNS TYPE ABAP_BOOL
+                            I_DISPLAY_TOOLBAR  TYPE ABAP_BOOL.
+* ...
+  data: l_statistics type bal_s_scnt.
+  data: ls_display_profile type bal_s_prof.
+  data: lt_log_handle type bal_t_logh.
+
+  check not gv_log_handle is initial.
+
+  call function 'BAL_LOG_HDR_READ'
+       exporting
+            i_log_handle = gv_log_handle
+       importing
+            e_statistics = l_statistics
+       exceptions
+            others       = 1.
+  check sy-subrc = 0 and l_statistics-msg_cnt_al > 0.
+  insert gv_log_handle into table lt_log_handle.
+
+  if g_control_handle is initial.
+
+*    if (  gr_log_container is initial ).
+*      gr_log_container = i_container.
+*    endif.
+    if gr_log_container is initial.        " container needed.
+      create object gr_dialogbox exporting
+                      caption = 'Журнал ошибок'
+                      width = '750'
+                      height = '150'.
+*    call method mr_dialogbox->REG_EVENT_CLOSE exporting REGISTER = 0.
+      gr_log_container = gr_dialogbox.
+      set handler gr_events_d0100->on_close_log for gr_dialogbox.
+    endif.
+
+*   create profile which describe how data are to be presented
+    perform create_display_profile using i_optimize_columns
+                                         i_display_toolbar.
+    ls_display_profile = gs_profile.
+*   initialize output of log display
+    call function 'BAL_CNTL_CREATE'
+         exporting
+              i_container          = gr_log_container
+              i_s_display_profile  = ls_display_profile
+              i_t_log_handle       = lt_log_handle
+         importing
+              e_control_handle     = g_control_handle
+         exceptions
+              profile_inconsistent = 1
+              internal_error       = 2
+              others               = 3.
+    if sy-subrc <> 0.
+      message id sy-msgid type sy-msgty number sy-msgno
+          with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+  else.
+    call function 'BAL_CNTL_REFRESH'
+         exporting
+              i_control_handle  = g_control_handle
+              i_t_log_handle    = lt_log_handle
+         exceptions
+              control_not_found = 1
+              internal_error    = 2
+              others            = 3.
+    if sy-subrc <> 0.
+      message id sy-msgid type sy-msgty number sy-msgno
+        with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+    endif.
+  endif.
+
+*<<<Y6BK069722 ACC mode
+  field-symbols: <r_log_alv> type ref to cl_gui_control.
+  read table gr_log_container->children index 1 assigning <r_log_alv>.
+
+  call method cl_gui_control=>set_focus
+       exporting
+          control = <r_log_alv>.
+*>>>Y6BK069722
+
+
+endform.
