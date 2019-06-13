@@ -1,4 +1,4 @@
-﻿*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
 *&  Include           ZP_SSV_PRTNRDAT_EDIT_TAB_LOG
 *&---------------------------------------------------------------------*
 * Начало: Блок переменных для вывода журнала ошибок
@@ -6,7 +6,7 @@ data: gv_log_handle    type BALLOGHNDL,
       gt_msg_handle    type BAL_T_MSGH,
       gs_profile       type BAL_S_PROF,
       g_control_handle type BALCNTHNDL,
-      gr_log_container type ref to CL_GUI_CONTAINER,
+*      gr_log_container type ref to CL_GUI_CONTAINER,
       gr_dialogbox     type ref to CL_GUI_DIALOGBOX_CONTAINER.
 * Конец: Блок переменных для вывода журнала ошибок
 
@@ -42,7 +42,7 @@ form ON_CLOSE_LOG.
     clear g_control_handle.
     clear gt_msg_handle.
     clear gs_profile.
-    clear gr_log_container.
+*    clear gr_log_container.
   endif.
 *  raise event on_close_obj.
   call method cl_gui_control=>set_focus
@@ -305,15 +305,15 @@ form display_protocol using I_OPTIMIZE_COLUMNS TYPE ABAP_BOOL
 *    if (  gr_log_container is initial ).
 *      gr_log_container = i_container.
 *    endif.
-    if gr_log_container is initial.        " container needed.
+*    if gr_log_container is initial.        " container needed.
       create object gr_dialogbox exporting
                       caption = 'Журнал ошибок'
                       width = '750'
                       height = '150'.
 *    call method mr_dialogbox->REG_EVENT_CLOSE exporting REGISTER = 0.
-      gr_log_container = gr_dialogbox.
+*      gr_log_container = gr_dialogbox.
       set handler gr_events_d0100->on_close_log for gr_dialogbox.
-    endif.
+*    endif.
 
 *   create profile which describe how data are to be presented
     perform create_display_profile using i_optimize_columns
@@ -322,7 +322,7 @@ form display_protocol using I_OPTIMIZE_COLUMNS TYPE ABAP_BOOL
 *   initialize output of log display
     call function 'BAL_CNTL_CREATE'
          exporting
-              i_container          = gr_log_container
+              i_container          = gr_dialogbox
               i_s_display_profile  = ls_display_profile
               i_t_log_handle       = lt_log_handle
          importing
@@ -352,7 +352,7 @@ form display_protocol using I_OPTIMIZE_COLUMNS TYPE ABAP_BOOL
 
 *<<<Y6BK069722 ACC mode
   field-symbols: <r_log_alv> type ref to cl_gui_control.
-  read table gr_log_container->children index 1 assigning <r_log_alv>.
+  read table gr_dialogbox->children index 1 assigning <r_log_alv>.
 
   call method cl_gui_control=>set_focus
        exporting
