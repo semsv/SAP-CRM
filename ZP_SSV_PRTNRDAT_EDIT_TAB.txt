@@ -33,6 +33,7 @@ constants: con_true              type char1     value 'X',
            con_back              type sy-ucomm  value 'НАЗАД',
            con_save              type sy-ucomm  value 'СОХРАНИТЬ',
            con_docedit           type sy-ucomm  value 'DOCUMENT',
+           con_addredit          type sy-ucomm  value 'ADDRESS',
            con_str               type lvc_fname value 'ZTB_PRTNRDAT_OLP',
            con_on                type char1     value '1',
            con_off               type char1     value '0',
@@ -387,7 +388,7 @@ form d0100_set_grid_fcat changing ct_fcat type lvc_t_fcat.
        <fs_fcat>-scrtext_s  = 'Тип клиент'.  " Короткое 10 симв
        <fs_fcat>-scrtext_m  = 'Тип клиента'. " Среднее 20 симв
        <fs_fcat>-scrtext_l  = 'Тип клиента'. " Длинное 40 символов
-       <fs_fcat>-seltext    = 'Тип клиент'.  " Короткое 10 симв
+       <fs_fcat>-seltext    = 'Тип клиент'.  " Ид для диалоговых окон 40 симв
        <fs_fcat>-edit       = 'X'.
        <fs_fcat>-F4AVAILABL = 'X'.
        <fs_fcat>-outputlen  = 10.
@@ -615,8 +616,9 @@ form d0100_fcode .
       call method gr_grid_d0100->check_changed_data
                     IMPORTING E_VALID = lv_valid.
       if lv_valid EQ 'X'.
-* Проверяем введенные данные если нет ошибок то сохраняем иначе показываем журнал ошибок
+* Проверяем введенные данные ф. check_data
         perform check_data.
+* Если нет ошибок то сохраняем иначе показываем журнал ошибок
         if gv_err_logic = 'X'.
           perform display_protocol using 'X'
                                          'X'.
@@ -642,13 +644,19 @@ form d0100_fcode .
           select *
             appending table gt_doc_out_tab
             from ZTB_DOCDATA_OLP
-           where EXTERNAL_ID = ls_main_out_tab-EXTERNAL_ID
-             and SYSTEMID    = ls_main_out_tab-SYSTEMID.
+           where EXTERNAL_ID    = ls_main_out_tab-EXTERNAL_ID
+             and SYSTEMID       = ls_main_out_tab-SYSTEMID
+             and PROCESS_NUMBER = ls_main_out_tab-PROCESS_NUMBER.
         endif.
       endloop.
 * Конец: Заполняем таблицу gt_doc_out_tab
       g_okcode       = con_exit.
       gv_next_screen = 101.
+      perform d0100_exit.
+* Обработка события от кнопки Редактировать адреса
+    when con_addredit.
+      g_okcode       = con_exit.
+      gv_next_screen = 102.
       perform d0100_exit.
 * Обработка события от кнопки Просмотреть/Изменить
     when 'TOGGLE'.                                          "#EC NOTEXT
