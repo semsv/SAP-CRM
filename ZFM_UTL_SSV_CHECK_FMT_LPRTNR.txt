@@ -1,0 +1,221 @@
+﻿FUNCTION ZFM_UTL_SSV_CHECK_FMT_LPRTNR.
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"  IMPORTING
+*"     REFERENCE(IV_INDEX) TYPE  I
+*"     REFERENCE(IV_VALUE) TYPE  ANY
+*"     REFERENCE(IV_TYPE_KIND) TYPE  ABAP_TYPEKIND
+*"     REFERENCE(IV_COMPNAME) TYPE  ABAP_COMPNAME
+*"  EXPORTING
+*"     REFERENCE(EV_ERROR_TXT) TYPE  STRING
+*"     REFERENCE(EV_PREV_COUNTRY) TYPE  LAND1
+*"     REFERENCE(EV_VALUE) TYPE  ANY
+*"----------------------------------------------------------------------
+
+  data: lv_value_str type string,
+        lv_fld_index_err type I,
+*        BEGIN OF record_fld_structure,
+*          value TYPE I,
+*        END OF record_fld_structure,
+*        lt_req_fld like sorted table of record_fld_structure WITH UNIQUE KEY value
+lt_req_fld type ZTAB_SSV_SIMPLE_INT_TAB
+ .
+
+  EV_VALUE     = IV_VALUE.
+  EV_ERROR_TXT = 'OK'.
+
+  case iv_index.
+   when 10. " Дата рождения
+   when others.
+  endcase.
+
+  CALL FUNCTION 'ZFM_UTL_SSV_INIT_REQFLD_TAB'
+    IMPORTING ET_REQ_FLD = lt_req_fld.
+
+* Начало: Проверка обязательности полей
+  READ TABLE lt_req_fld WITH KEY IV_INDEX TRANSPORTING NO FIELDS.
+  if sy-subrc eq 0.
+    if ev_value is initial.
+      lv_fld_index_err = iv_index.
+      lv_value_str     = lv_fld_index_err.
+      condense lv_value_str.
+      CONCATENATE 'Незаполнено обязательное поле, номер поля в csv "' lv_value_str '".'
+             INTO ev_error_txt.
+      return.
+    endif.
+  endif.
+* Конец: Проверка обязательности полей
+  case iv_type_kind.
+    when 'D'.
+      lv_value_str = ev_value.
+      check lv_value_str is not initial.
+      CALL FUNCTION 'CONVERT_DATE_TO_INTERNAL'
+        EXPORTING
+          date_external = lv_value_str
+        IMPORTING
+          date_internal = ev_value
+        EXCEPTIONS
+          DATE_EXTERNAL_IS_INVALID = 1
+          OTHERS                   = 2.
+      if sy-subrc ne 0.
+        lv_fld_index_err = iv_index.
+        ev_value         = lv_value_str.
+        CONCATENATE 'Ошибка преобразования строки "' ev_value '"'
+               INTO ev_error_txt.
+        CONCATENATE ev_error_txt ' в дату!'
+               INTO ev_error_txt.
+      endif.
+    when 'C'.
+      if iv_compname eq 'MARITALSTATUS'.
+        data: lt_maritalstatus type standard table of tb027.
+        select *
+          into table lt_maritalstatus
+          from tb027.
+        read table lt_maritalstatus with table key CLIENT = sy-mandt MARST = ev_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = iv_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата(MARITALSTATUS), значение "' ev_value '",'
+                 INTO ev_error_txt.
+          CONCATENATE ev_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO ev_error_txt.
+        endif.
+      endif.
+      if iv_compname eq 'SEX'.
+        data: lt_dd07v TYPE TABLE OF dd07v.
+        CALL FUNCTION 'DD_DOMVALUES_GET'
+          EXPORTING
+            domname = 'BU_SEXID'
+            text    = 'X'
+            langu   = sy-langu
+          TABLES
+            dd07v_tab = lt_dd07v
+          EXCEPTIONS
+            wrong_textflag = 1
+            OTHERS         = 2.
+        READ TABLE lt_dd07v WITH KEY domvalue_l = ev_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = iv_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата(SEX), значение "' ev_value '",'
+                 INTO ev_error_txt.
+          CONCATENATE ev_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO ev_error_txt.
+        endif.
+      endif.
+      if iv_compname eq 'FATCASTATUS'.
+        CALL FUNCTION 'DD_DOMVALUES_GET'
+          EXPORTING
+            domname = 'ZD_FATCA'
+            text    = 'X'
+            langu   = sy-langu
+          TABLES
+            dd07v_tab = lt_dd07v
+          EXCEPTIONS
+            wrong_textflag = 1
+            OTHERS         = 2.
+        READ TABLE lt_dd07v WITH KEY domvalue_l = ev_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = iv_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата(FATCASTATUS), значение "' ev_value '",'
+                 INTO ev_error_txt.
+          CONCATENATE ev_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO ev_error_txt.
+        endif.
+      endif.
+      if iv_compname eq 'NATIONALITY' or
+         iv_compname eq 'ADRREG_COUNTRY' or
+         iv_compname eq 'ADRLVE_COUNTRY' or
+         iv_compname eq 'ADROTHER_COUNTRY'.
+        data: lt_nationality type standard table of t005.
+        select *
+          into table lt_nationality " Справочник стран
+          from t005.
+        clear ev_prev_country.
+        check ev_value is not initial.
+        read table lt_nationality with key MANDT = sy-mandt LAND1 = ev_value transporting no fields.
+        if sy-subrc eq 0.
+          ev_prev_country = ev_value.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = iv_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата(*NATIONALITY*), значение "' ev_value '",'
+                 INTO ev_error_txt.
+          CONCATENATE ev_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO ev_error_txt.
+        endif.
+      endif.
+      if iv_compname eq 'TELNUMBER_1R' or
+         iv_compname eq 'TELNUMBER_2R' or
+         iv_compname eq 'TELNUMBER_3R' or
+         iv_compname eq 'TELNUMBER_4R' or
+         iv_compname eq 'TELNUMBER_5R'.
+        data: lt_phone_type type sorted table of ZUBR_PHONE_TYPE WITH UNIQUE KEY CLIENT TYPE.
+        select *
+          into table lt_phone_type
+          from ZUBR_PHONE_TYPE.
+        check ev_value is not initial.
+        read table lt_phone_type with table key CLIENT = sy-mandt TYPE = ev_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = iv_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата(*TELNUMBER*), значение "' ev_value '",'
+                 INTO ev_error_txt.
+          CONCATENATE ev_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO ev_error_txt.
+        endif.
+      endif.
+      if ( iv_compname eq 'ADRREG_REGION' or
+           iv_compname eq 'ADRLVE_REGION' or
+           iv_compname eq 'ADROTHER_REGION' ) and
+          ev_prev_country is not initial.
+        data: lt_region type sorted table of T005S WITH UNIQUE KEY MANDT LAND1 BLAND.
+        select *
+          into table lt_region
+          from T005S.
+        check ev_value is not initial.
+        read table lt_region with table key MANDT = sy-mandt LAND1 = ev_prev_country BLAND = ev_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = iv_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата(*ADRREG,ADRLVE,ADROTHER*), значение "' ev_value '",'
+                 INTO ev_error_txt.
+          CONCATENATE ev_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO ev_error_txt.
+        endif.
+      endif.
+      if  iv_compname eq 'CLIENTKIND'.
+        if  ev_value eq '1'.
+        elseif ev_value eq '2'.
+        else.
+          lv_value_str  = ev_value.
+          CONCATENATE 'Ошибка формата(CLIENTKIND), значение "' lv_value_str '",' INTO ev_error_txt.
+          lv_fld_index_err = iv_index.
+          lv_value_str     = lv_fld_index_err.
+          CONCATENATE ev_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO ev_error_txt.
+        endif.
+      endif.
+  endcase.
+
+
+
+ENDFUNCTION.
