@@ -445,6 +445,12 @@ START-OF-SELECTION.
        ls_docdata_olp-PROCESS_NUMBER  = lv_olp_req_id.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
+* Удаление старых документов
+     DELETE FROM ztb_docdata_olp WHERE EXTERNAL_ID = ls_data-EXTERNAL_ID AND SYSTEMID = LV_SYSTEMID.
+* Удаление старых адресов
+     DELETE FROM ztb_addrdat_olp WHERE EXTERNAL_ID = ls_data-EXTERNAL_ID AND SYSTEMID = LV_SYSTEMID.
+* Удаление старых телефонов
+     DELETE FROM ztb_telnedat_olp WHERE EXTERNAL_ID = ls_data-EXTERNAL_ID AND SYSTEMID = LV_SYSTEMID.
 * Заполнение таблицы телефонов (Первый телефон он же основной)
      ls_telnedat_olp-client          = sy-mandt.
      ls_telnedat_olp-EXTERNAL_ID     = ls_data-EXTERNAL_ID.
@@ -532,7 +538,7 @@ START-OF-SELECTION.
      ls_addrdat_olp-SYSTEMID        = LV_SYSTEMID.
      ls_addrdat_olp-PROCESS_NUMBER = lv_olp_req_id.
      ls_addrdat_olp-NUMBERROW       = '1'.
-     ls_addrdat_olp-ADR_NOTES       = ''.
+     ls_addrdat_olp-ADR_NOTES       = 'ZADR_1'.
      ls_addrdat_olp-PCODE1_EXT      = '1'. " ZADR_1
      ls_addrdat_olp-country         = ls_data-ADRREG_COUNTRY.
      ls_addrdat_olp-REGION          = ls_data-ADRREG_REGION.
@@ -551,7 +557,7 @@ START-OF-SELECTION.
      ls_addrdat_olp-SYSTEMID        = LV_SYSTEMID.
      ls_addrdat_olp-PROCESS_NUMBER = lv_olp_req_id.
      ls_addrdat_olp-NUMBERROW       = '2'.
-     ls_addrdat_olp-ADR_NOTES       = ''.
+     ls_addrdat_olp-ADR_NOTES       = 'ZADR_2'.
      ls_addrdat_olp-PCODE1_EXT      = '2'. " ZADR_2
      ls_addrdat_olp-country         = ls_data-ADRLVE_COUNTRY.
      ls_addrdat_olp-REGION          = ls_data-ADRLVE_REGION.
@@ -571,7 +577,7 @@ START-OF-SELECTION.
        ls_addrdat_olp-SYSTEMID        = LV_SYSTEMID.
        ls_addrdat_olp-PROCESS_NUMBER = lv_olp_req_id.
        ls_addrdat_olp-NUMBERROW       = '3'.
-       ls_addrdat_olp-ADR_NOTES       = ''.
+       ls_addrdat_olp-ADR_NOTES       = 'ZADR_3'. " TB009 - TB010
        ls_addrdat_olp-PCODE1_EXT      = '3'. " ZADR_3
        ls_addrdat_olp-country         = ls_data-ADROTHER_COUNTRY.
        ls_addrdat_olp-REGION          = ls_data-ADROTHER_REGION.
@@ -871,6 +877,18 @@ form check_format
           condense lv_value_str.
           CONCATENATE 'Ошибка формата(*ADRREG,ADRLVE,ADROTHER*), значение "' p_value '",'
                  INTO lv_error_txt.
+          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO lv_error_txt.
+        endif.
+      endif.
+      if  i_compname eq 'CLIENTKIND'.
+        if  p_value eq '1'.
+        elseif p_value eq '2'.
+        else.
+          lv_value_str  = p_value.
+          CONCATENATE 'Ошибка формата(CLIENTKIND), значение "' lv_value_str '",' INTO lv_error_txt.
+          lv_fld_index_err = i_index.
+          lv_value_str     = lv_fld_index_err.
           CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
                  INTO lv_error_txt.
         endif.
