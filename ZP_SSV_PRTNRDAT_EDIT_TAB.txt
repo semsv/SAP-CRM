@@ -17,16 +17,21 @@ DATA:
   ,GT_ROW_NO           type LVC_T_ROID
   ,gt_fcat             type lvc_t_fcat
   ,gv_err_logic        type ABAP_BOOL   " Для логирования ошибок
+  ,gv_dialog_handle    type balloghndl
+  ,gr_dialog           type ref to CL_GUI_DIALOGBOX_CONTAINER
+  ,gv_show_warning     type char1 value 'X'
   .
+
 types: begin of g_ty_s_scr_opt,
          edit_mode         type i,
        end of g_ty_s_scr_opt.
 
 data:
-  gt_main_out_tab      type standard table of ZTB_PRTNRDAT_OLP,
+  gt_main_out_tab      type standard table of ZTB_PRTNRDAT_OLP, " Таблица основных данных ДП
   gt_doc_out_tab       type standard table of ZTB_DOCDATA_OLP,  " Таблица документы
   gt_addr_out_tab      type standard table of ZTB_ADDRDAT_OLP,  " Таблица адреса
   gt_tel_out_tab       type standard table of ZTB_TELNEDAT_OLP, " Таблица телефонов
+  gt_main_out_tab_cmp  type standard table of ZTB_PRTNRDAT_OLP, " Таблица основных данных ДП
   gs_screen_option     type g_ty_s_scr_opt.
 
 constants: con_true              type char1     value 'X',
@@ -97,8 +102,11 @@ class lcl_events_d0100 definition.
 
     on_close_log
                          for event close
-                         of CL_GUI_DIALOGBOX_CONTAINER.
+                         of CL_GUI_DIALOGBOX_CONTAINER,
 
+    on_close_dialog
+                         for event close
+                         of CL_GUI_DIALOGBOX_CONTAINER.
 
 endclass.                    "lcl_events_d0100 DEFINITION
 *---------------------------------------------------------------------*
@@ -161,7 +169,17 @@ class lcl_events_d0100 implementation.
   method on_close_log.
     perform on_close_log.
   endmethod.
+
+  method on_close_dialog.
+    perform on_close_dialog.
+  endmethod.
 endclass.                    "lcl_events_d0100 IMPLEMENTATION
+
+form on_close_dialog.
+  call method gr_dialog->free.
+  clear gr_dialog.
+  clear gv_dialog_handle.
+endform.
 
 selection-screen begin of block base_options with frame title text-100.
 
@@ -267,6 +285,11 @@ data:
      lv_prcss = ls_olpcreaterep-PROCESS_NUMBER.
      select *
        into table gt_main_out_tab
+       from ZTB_PRTNRDAT_OLP
+      where PROCESS_NUMBER = lv_prcss    " Номер процесса
+        and SYSTEMID       = lv_sysid.   " Уникальный идентификатор системы портф проср ссуд
+     select *
+       into table gt_main_out_tab_cmp
        from ZTB_PRTNRDAT_OLP
       where PROCESS_NUMBER = lv_prcss    " Номер процесса
         and SYSTEMID       = lv_sysid.   " Уникальный идентификатор системы портф проср ссуд
@@ -506,11 +529,59 @@ module d0100_exit input.
   perform d0100_exit.
 endmodule.                 " d0100_exit  INPUT
 
+form check_data_change using ev_flg_change type char1.
+  data:
+    ls_main_data     type ZTB_PRTNRDAT_OLP,
+    ls_main_data_cmp type ZTB_PRTNRDAT_OLP.
+
+  clear ev_flg_change.
+  loop at gt_main_out_tab_cmp into ls_main_data.
+    read table gt_main_out_tab
+      INTO ls_main_data_cmp
+      WITH KEY CLIENT      = ls_main_data-CLIENT
+               EXTERNAL_ID = ls_main_data-EXTERNAL_ID
+               SYSTEMID    = ls_main_data-SYSTEMID.
+    if sy-subrc ne 0.
+* суда попадаем если пользователь удалил одну или несколько записей
+      ev_flg_change = 'X'.
+    else.
+      if ls_main_data_cmp <> ls_main_data.
+* суда попадаем если что то поменялось в самих данных
+        ev_flg_change = 'X'.
+      endif.
+    endif.
+  endloop.
+
+endform.
+
 form save_data.
-  modify ZTB_PRTNRDAT_OLP from table gt_main_out_tab.
+  data: lv_flg_change type char1.
+  perform check_data_change using lv_flg_change.
+  if lv_flg_change eq 'X'.
+    modify ZTB_PRTNRDAT_OLP from table gt_main_out_tab.
+    commit work and wait.
+    message i000(0k) with 'Данные успешно сохранены'.
+    gt_main_out_tab_cmp[] = gt_main_out_tab[].
+  endif.
+endform.                   " save_data
+
+form save_data_doc.
+  modify ZTB_DOCDATA_OLP from table gt_doc_out_tab.
   commit work and wait.
   message i000(0k) with 'Данные успешно сохранены'.
-endform.                   " save_data
+endform.                   " save_data_doc
+
+form save_data_addr.
+  modify ZTB_ADDRDAT_OLP from table gt_addr_out_tab.
+  commit work and wait.
+  message i000(0k) with 'Данные успешно сохранены'.
+endform.                   " save_data_addr
+
+form save_data_telephone.
+  modify ZTB_TELNEDAT_OLP from table gt_tel_out_tab.
+  commit work and wait.
+  message i000(0k) with 'Данные успешно сохранены'.
+endform.                   " save_data_telephone
 
 form check_data.
   data: lr_data_descr TYPE REF TO cl_abap_structdescr,
@@ -600,11 +671,12 @@ endform.
 *       text
 *----------------------------------------------------------------------*
 form d0100_fcode .
-
-  data: l_okcode        like sy-ucomm.
-  data: lv_valid        type ABAP_BOOL.
-  data: ls_main_out_tab type ZTB_PRTNRDAT_OLP,
-        ls_index_rows   type LVC_S_ROW.
+  data:  ls_layo             type lvc_s_layo
+        ,lv_flg_change       type char1
+        ,l_okcode            like sy-ucomm
+        ,lv_valid            type ABAP_BOOL
+        ,ls_main_out_tab     type ZTB_PRTNRDAT_OLP
+        ,ls_index_rows       type LVC_S_ROW.
 
   l_okcode = sy-ucomm. " g_okcode.
   clear g_okcode.
@@ -614,8 +686,38 @@ form d0100_fcode .
 * Обработка событий от кнопок: ВЫХОД, НАЗАД, ОТМЕНА *
 *****************************************************
     when con_exit or con_back or con_canc.
-      g_okcode = l_okcode.
-      perform d0100_exit.
+      if gv_show_warning eq 'X'.
+        call method gr_grid_d0100->check_changed_data
+          IMPORTING E_VALID = lv_valid.
+        if lv_valid eq 'X'.
+          perform check_data_change using lv_flg_change.
+          if lv_flg_change eq 'X'.
+            perform show_warning.
+            clear gv_show_warning.
+          endif.
+          check lv_flg_change ne 'X'.
+        else.
+          exit.
+        endif.
+      endif.
+*
+      if l_okcode eq con_canc.
+        gt_main_out_tab[] = gt_main_out_tab_cmp[].
+        call method gr_grid_d0100->set_table_for_first_display
+          exporting
+            i_structure_name    = con_str
+            i_save              = 'A'
+            i_default           = con_true
+            is_layout           = ls_layo
+          changing
+            it_outtab           = gt_main_out_tab[]
+            it_fieldcatalog     = gt_fcat
+          .
+        gv_show_warning = 'X'.
+      else.
+        g_okcode = l_okcode.
+        perform d0100_exit.
+      endif.
 *****************************************
 * Обработка события от кнопки СОХРАНИТЬ *
 *****************************************
@@ -641,12 +743,35 @@ form d0100_fcode .
       call method gr_grid_d0100->GET_SELECTED_ROWS
         importing ET_INDEX_ROWS = GT_INDEX_ROWS
                   ET_ROW_NO     = GT_ROW_NO.
-* Начало: Заполняем таблицу gt_doc_out_tab
-      clear gt_doc_out_tab.
       if GT_INDEX_ROWS[] is initial.
         message e001(1) with 'Необходимо выделить строку ' 'для редактирования документов'.
         return.
       endif.
+
+************************************************************
+* Далее проверим что на этом экране все данные сохранены   *
+* Начало проверки                                          *
+************************************************************
+      call method gr_grid_d0100->check_changed_data
+        IMPORTING E_VALID = lv_valid.
+      check lv_valid EQ 'X'.
+* Проверяем введенные данные ф. check_data
+        perform check_data.
+* Если нет ошибок то сохраняем иначе показываем журнал ошибок
+        if gv_err_logic = 'X'.
+          perform display_protocol using 'X'
+                                         'X'.
+          exit.
+        else.
+          perform save_data.
+        endif.
+************************************************************
+* проверим что на этом экране все данные сохранены         *
+* Конец проверки                                           *
+***************************************** ******************
+
+* Начало: Заполняем таблицу gt_doc_out_tab
+      clear gt_doc_out_tab.
       loop at GT_INDEX_ROWS into ls_index_rows.
         read table gt_main_out_tab index ls_index_rows into ls_main_out_tab.
         if sy-subrc EQ 0.
@@ -677,6 +802,29 @@ form d0100_fcode .
         message e001(1) with 'Необходимо выделить строку ' 'для редактирования адресов'.
         return.
       endif.
+
+************************************************************
+* Далее проверим что на этом экране все данные сохранены   *
+* Начало проверки                                          *
+************************************************************
+      call method gr_grid_d0100->check_changed_data
+        IMPORTING E_VALID = lv_valid.
+      check lv_valid EQ 'X'.
+* Проверяем введенные данные ф. check_data
+        perform check_data.
+* Если нет ошибок то сохраняем иначе показываем журнал ошибок
+        if gv_err_logic = 'X'.
+          perform display_protocol using 'X'
+                                         'X'.
+          exit.
+        else.
+          perform save_data.
+        endif.
+************************************************************
+* проверим что на этом экране все данные сохранены         *
+* Конец проверки                                           *
+***************************************** ******************
+
       loop at GT_INDEX_ROWS into ls_index_rows.
         read table gt_main_out_tab index ls_index_rows into ls_main_out_tab.
         if sy-subrc EQ 0.
@@ -707,6 +855,29 @@ form d0100_fcode .
         message e001(1) with 'Необходимо выделить строку ' 'для редактирования телефонов'.
         return.
       endif.
+
+************************************************************
+* Далее проверим что на этом экране все данные сохранены   *
+* Начало проверки                                          *
+************************************************************
+      call method gr_grid_d0100->check_changed_data
+        IMPORTING E_VALID = lv_valid.
+      check lv_valid EQ 'X'.
+* Проверяем введенные данные ф. check_data
+        perform check_data.
+* Если нет ошибок то сохраняем иначе показываем журнал ошибок
+        if gv_err_logic = 'X'.
+          perform display_protocol using 'X'
+                                         'X'.
+          exit.
+        else.
+          perform save_data.
+        endif.
+************************************************************
+* проверим что на этом экране все данные сохранены         *
+* Конец проверки                                           *
+***************************************** ******************
+
       loop at GT_INDEX_ROWS into ls_index_rows.
         read table gt_main_out_tab index ls_index_rows into ls_main_out_tab.
         if sy-subrc EQ 0.
