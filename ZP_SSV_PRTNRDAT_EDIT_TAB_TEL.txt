@@ -1,0 +1,239 @@
+﻿*&---------------------------------------------------------------------*
+*&  Include           ZP_SSV_PRTNRDAT_EDIT_TAB_TEL
+*&---------------------------------------------------------------------*
+
+data: gr_container_d0103  type ref to cl_gui_custom_container,
+      gr_grid_d0103       type ref to cl_gui_alv_grid
+      .
+
+data: ms_screen103_option     type g_ty_s_scr_opt.
+
+constants:
+      con_str_telephone     type lvc_fname value 'ZTB_TELNEDAT_OLP'.
+*&---------------------------------------------------------------------*
+*&      Module  d0103_fcode  INPUT
+*&---------------------------------------------------------------------*
+*       text
+* Для экрана редактирование адресов
+*----------------------------------------------------------------------*
+module d0103_fcode input.
+  perform d0103_fcode.
+endmodule.                 " d0103_fcode  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Form  d0103_fcode
+*&---------------------------------------------------------------------*
+*       text
+* Для экрана редактирование адресов
+*----------------------------------------------------------------------*
+form d0103_fcode .
+  data: l_okcode like sy-ucomm,
+        lv_valid type char1.
+  l_okcode = sy-ucomm. " g_okcode.
+  clear g_okcode.
+
+  case l_okcode.
+* Обработка событий от кнопок: ВЫХОД, НАЗАД, ОТМЕНА
+    when con_exit or con_back or con_canc.
+      g_okcode = l_okcode.
+      gv_next_screen = 100.
+      perform d0103_exit.
+* Обработка события от кнопки СОХРАНИТЬ
+    when con_save.
+      call method gr_grid_d0103->check_changed_data
+                    IMPORTING E_VALID = lv_valid.
+      if lv_valid EQ 'X'.
+        perform save_data_telephone.
+      endif.
+* Обработка события от кнопки Просмотреть/Изменить
+    when 'TOGGLE'.                                          "#EC NOTEXT
+      data: l_edit type i.
+
+      case ms_screen103_option-edit_mode.
+        when con_edit_mode_change.
+          ms_screen103_option-edit_mode = con_edit_mode_display.
+          l_edit                     = con_off.
+        when con_edit_mode_display.
+          ms_screen103_option-edit_mode = con_edit_mode_change.
+          l_edit                     = con_on.
+      endcase.
+
+      call method gr_grid_d0103->set_ready_for_input
+        exporting
+          i_ready_for_input = l_edit.
+  endcase.
+
+endform.                    " d0103_fcode
+
+
+
+*&---------------------------------------------------------------------*
+*&      Form  d0103_exit
+*&---------------------------------------------------------------------*
+*       text
+* Для экрана редактирование документов
+*----------------------------------------------------------------------*
+form d0103_exit .
+
+  data: l_okcode like sy-ucomm.
+
+  l_okcode = g_okcode.
+  clear g_okcode.
+
+  case l_okcode.
+    when con_exit or con_back or con_canc.
+      call method gr_grid_d0103->free.
+      call method gr_container_d0103->free.
+
+      call method cl_gui_cfw=>flush.
+
+      clear gr_container_d0103.
+      clear gr_grid_d0103.
+*      clear gr_events_d0103.
+
+      set screen gv_next_screen.
+      gv_next_screen = 0.
+      leave screen.
+  endcase.
+
+endform.                    " d0103_exit
+
+*&---------------------------------------------------------------------*
+*&      Form  d0103_set_grid_fcat
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0103_set_grid_fcat changing ct_fcat type lvc_t_fcat.
+
+  data: ls_fcat type lvc_s_fcat,
+        l_lin   type i.
+
+  field-symbols: <fs_fcat> type lvc_s_fcat.
+
+  ms_screen103_option-edit_mode = con_edit_mode_display.
+
+  call function 'LVC_FIELDCATALOG_MERGE'
+    exporting
+      i_buffer_active        = ' ' " gs_test-buffer_active
+      i_structure_name       = con_str_telephone
+      i_client_never_display = con_true
+      i_bypassing_buffer     = ' ' " gs_test-bypassing_buffer
+    changing
+      ct_fieldcat            = ct_fcat[]
+    exceptions
+      inconsistent_interface = 1
+      program_error          = 2
+      others                 = 3.
+  if sy-subrc <> 0.
+    message id sy-msgid type sy-msgty number sy-msgno
+            with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  endif.
+***************************************************************
+*****   Настройка вывода названий полей в таблице (нач.)  *****
+***************************************************************
+  loop at ct_fcat assigning <fs_fcat>.
+    clear <fs_fcat>-edit.
+    <fs_fcat>-outputlen  = 10.
+    if <fs_fcat>-fieldname eq 'NUMBERROW'.
+      <fs_fcat>-TECH = 'X'." Техническое поле (не показываем, не доступно для вывода и редактирования)
+    endif.
+    if <fs_fcat>-fieldname eq 'PROCESS_NUMBER'.
+      <fs_fcat>-TECH = 'X'." Техническое поле (не показываем, не доступно для вывода и редактирования)
+    endif.
+    if <fs_fcat>-fieldname eq 'TEL_NO'.
+      <fs_fcat>-edit       = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'TELEPHONE'.
+      <fs_fcat>-edit       = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'COUNTRY'.
+      <fs_fcat>-edit       = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'EXTENSION'.
+      <fs_fcat>-edit       = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'COMM_NOTES'.
+      <fs_fcat>-edit       = 'X'.
+      <fs_fcat>-F4AVAILABL = 'X'. " Взведение этого флажка позволило вывести кустомное средство поиска подключенное ранее к таблице выводимой в гриде
+    endif.
+    if <fs_fcat>-fieldname eq 'R_3_USER'.
+      <fs_fcat>-edit       = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'STD_NO'.
+      <fs_fcat>-edit       = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'STD_RECIP'.
+      <fs_fcat>-edit       = 'X'.
+    endif.
+  endloop.
+***************************************************************
+*****   Настройка вывода названий полей в таблице (кон.)  *****
+***************************************************************
+endform.                      " d0103_set_grid_fcat
+
+*&---------------------------------------------------------------------*
+*&      Form  d0103_prepare_container
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0103_prepare_container .
+  data: lt_fcat             type lvc_t_fcat,
+        ls_fcat             type lvc_s_fcat,
+        ls_layo             type lvc_s_layo,
+        ls_vari             type disvariant,
+        ls_prnt             type lvc_s_prnt,
+        lt_hype             type lvc_t_hype,
+        l_consistency_check type char1.
+
+  if gr_container_d0103 is initial.
+    if cl_gui_alv_grid=>offline( ) is initial.
+      create object gr_container_d0103
+                    exporting container_name = 'D0103_CONTAINER'.
+    endif.
+
+    create object gr_grid_d0103
+        exporting i_parent = gr_container_d0103.
+
+    perform d0103_set_grid_fcat changing lt_fcat.
+*    perform d0103_set_grid_events.
+
+    call method gr_grid_d0103->set_ready_for_input
+      exporting
+        i_ready_for_input = grid_mode_display.
+
+*    gs_screen_option2-edit_mode = con_edit_mode_display.
+
+    call method gr_grid_d0103->set_table_for_first_display
+      exporting
+        i_structure_name    = con_str_telephone
+        i_save              = 'A'
+        i_default           = con_true
+        is_layout           = ls_layo
+      changing
+        it_outtab           = gt_tel_out_tab[]
+        it_fieldcatalog     = lt_fcat
+        .
+  endif.
+endform.                    " d0103_prepare_container
+
+module d0103_prepare_container output.
+  perform d0103_prepare_container.
+endmodule.                 " d0103_prepare_container  OUTPUT
+
+form d0103_set_status .
+
+  types: begin of l_ty_s_excl,
+           func type syucomm,
+         end   of l_ty_s_excl,
+         l_ty_t_excl type standard table of l_ty_s_excl.
+
+  data: lt_excl type l_ty_t_excl.
+
+  set pf-status 'D0103' excluding lt_excl.
+  set titlebar 'D0103'.
+
+endform.                    " d0103_set_status
+
+module d0103_set_status output.
+  perform d0103_set_status.
+endmodule.                 " d0103_set_status  OUTPUT
