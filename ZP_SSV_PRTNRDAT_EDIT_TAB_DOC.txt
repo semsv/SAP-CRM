@@ -1,4 +1,4 @@
-﻿*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
 *&  Include           ZP_SSV_PRTNRDAT_EDIT_TAB_DOC
 *&---------------------------------------------------------------------*
 data: gr_container_d0101  type ref to cl_gui_custom_container,
@@ -26,7 +26,8 @@ endmodule.                 " d0101_fcode  INPUT
 * Для экрана редактирование документов
 *----------------------------------------------------------------------*
 form d0101_fcode .
-  data: l_okcode like sy-ucomm.
+  data: l_okcode like sy-ucomm,
+        lv_valid type char1.
   l_okcode = sy-ucomm. " g_okcode.
   clear g_okcode.
 
@@ -38,6 +39,11 @@ form d0101_fcode .
       perform d0101_exit.
 * Обработка события от кнопки СОХРАНИТЬ
     when con_save.
+      call method gr_grid_d0101->check_changed_data
+                    IMPORTING E_VALID = lv_valid.
+      if lv_valid EQ 'X'.
+        perform save_data_doc.
+      endif.
 * Обработка события от кнопки Просмотреть/Изменить
     when 'TOGGLE'.                                          "#EC NOTEXT
       data: l_edit type i.
@@ -150,11 +156,15 @@ form d0101_set_grid_fcat changing ct_fcat type lvc_t_fcat.
        <fs_fcat>-fieldname eq 'CODEOTDDOC' or
        <fs_fcat>-fieldname eq 'IDVALIDFROMDATE' or
        <fs_fcat>-fieldname eq 'IDVALIDTODATE' or
-       <fs_fcat>-fieldname eq 'IDENTRYDATE'.
+       <fs_fcat>-fieldname eq 'IDENTRYDATE' or
+       <fs_fcat>-fieldname eq 'EXTPROCESSED'.
        <fs_fcat>-edit       = 'X'.                        " Доступно для редактирования
        <fs_fcat>-OUTPUTLEN  = 15.
     else.
 *       <fs_fcat>-F4AVAILABL = 'X'.                       " Подключение кустомного справочника значений
+    endif.
+    if <fs_fcat>-fieldname eq 'TYPEDOC'.
+      <fs_fcat>-F4AVAILABL = 'X'. " Взведение этого флажка позволило вывести кустомное средство поиска подключенное ранее к таблице выводимой в гриде
     endif.
   endloop.
 ***************************************************************
