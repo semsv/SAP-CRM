@@ -1,4 +1,4 @@
-﻿*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
 *&  Include           ZP_SSV_PRTNRDAT_EDIT_TAB_ADDR
 *&---------------------------------------------------------------------*
 data: gr_container_d0102  type ref to cl_gui_custom_container,
@@ -156,6 +156,12 @@ form d0102_set_grid_fcat changing ct_fcat type lvc_t_fcat.
       <fs_fcat>-edit = 'X'.
     endif.
     if <fs_fcat>-fieldname eq 'REGION'.
+      <fs_fcat>-edit = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'ADR_NOTES'.
+      <fs_fcat>-edit = 'X'.
+    endif.
+    if <fs_fcat>-fieldname eq 'EXTPROCESSED'.
       <fs_fcat>-edit = 'X'.
     endif.
   endloop.
