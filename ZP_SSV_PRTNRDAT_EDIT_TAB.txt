@@ -1,4 +1,4 @@
-﻿*&---------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
 *& Include ZP_SSV_PRTNRDAT_EDIT_TAB_TOP                      Report ZP_SSV_PRTNRDAT_EDIT_TAB
 *&
 *&---------------------------------------------------------------------*
@@ -15,7 +15,7 @@ DATA:
   ,gv_next_screen      type i
   ,GT_INDEX_ROWS       type LVC_T_ROW
   ,GT_ROW_NO           type LVC_T_ROID
-  ,gt_fcat             type lvc_t_fcat
+  ,gt_fcat             type lvc_t_fcat  " Для настройки полей (имена, размер, доступ редакт и тд)
   ,gv_err_logic        type ABAP_BOOL   " Для логирования ошибок
   ,gv_dialog_handle    type balloghndl
   ,gr_dialog           type ref to CL_GUI_DIALOGBOX_CONTAINER
@@ -28,10 +28,18 @@ types: begin of g_ty_s_scr_opt,
 
 data:
   gt_main_out_tab      type standard table of ZTB_PRTNRDAT_OLP, " Таблица основных данных ДП
+
   gt_doc_out_tab       type standard table of ZTB_DOCDATA_OLP,  " Таблица документы
   gt_addr_out_tab      type standard table of ZTB_ADDRDAT_OLP,  " Таблица адреса
   gt_tel_out_tab       type standard table of ZTB_TELNEDAT_OLP, " Таблица телефонов
+
   gt_main_out_tab_cmp  type standard table of ZTB_PRTNRDAT_OLP, " Таблица основных данных ДП
+
+  gt_doc_out_tab_cmp   type standard table of ZTB_DOCDATA_OLP,  " Таблица документы
+  gt_addr_out_tab_cmp  type standard table of ZTB_ADDRDAT_OLP,  " Таблица адреса
+  gt_tel_out_tab_cmp   type standard table of ZTB_TELNEDAT_OLP, " Таблица телефонов
+
+  gs_main_out_tab_edt  type ZTB_PRTNRDAT_OLP,                   " Редактируемая запись
   gs_screen_option     type g_ty_s_scr_opt.
 
 constants: con_true              type char1     value 'X',
@@ -185,7 +193,7 @@ selection-screen begin of block base_options with frame title text-100.
 
   parameters: lv_sysid  TYPE ZED_SSV_OLP_SYSTEMS_ID AS LISTBOX VISIBLE LENGTH 60 obligatory.
   parameters: lv_augrp  TYPE BU_AUGRP AS LISTBOX VISIBLE LENGTH 60 OBLIGATORY.
-  parameters: lvprcssd  TYPE CHAR1 AS LISTBOX VISIBLE LENGTH 60 OBLIGATORY.
+  parameters: lvprcssd  TYPE CHAR1 AS LISTBOX VISIBLE LENGTH 60.
   parameters: lv_prcss  TYPE ZED_SSV_BPL_PROCESSNUMBER.
 
 
@@ -251,10 +259,19 @@ data:
    from ZTB_OLP_MSG_CTLG.
 
   LOOP AT lt_prccsd INTO ls_prccsd.
+* Исключаем из выбора пункт "Обработано успешно"
+* Такие записи редактировать нельзя т.к этот флаг означает что мы уже создавали клиента по этим данным и эта строка нужна как отчет о создании ДП
+    if ls_prccsd-PROCESSED EQ 1.
+      continue.
+    endif.
     value-key  = ls_prccsd-PROCESSED.
     value-text = ls_prccsd-DESCRIPTION.
     append value to list.
   ENDLOOP.
+
+ value-key  = 'X'.
+ value-text = 'Все'.
+ append value to list.
 
  name = 'lvprcssd'.
  CALL FUNCTION 'VRM_SET_VALUES' EXPORTING id = name values = list.
@@ -264,6 +281,10 @@ data:
 
   DATA: lt_olpcreaterep TYPE STANDARD TABLE OF ZTB_OLPCREATEREP,
         ls_olpcreaterep TYPE ZTB_OLPCREATEREP.
+
+   if lvprcssd is initial.
+     lvprcssd = 'X'.
+   endif.
 
    if lv_prcss is initial.
      select *
@@ -280,20 +301,25 @@ data:
         and PROCESS_NUMBER   = lv_prcss.
    endif.
 
-
+   clear gt_main_out_tab.
    loop at lt_olpcreaterep into ls_olpcreaterep.
      lv_prcss = ls_olpcreaterep-PROCESS_NUMBER.
-     select *
-       into table gt_main_out_tab
-       from ZTB_PRTNRDAT_OLP
-      where PROCESS_NUMBER = lv_prcss    " Номер процесса
-        and SYSTEMID       = lv_sysid.   " Уникальный идентификатор системы портф проср ссуд
-     select *
-       into table gt_main_out_tab_cmp
-       from ZTB_PRTNRDAT_OLP
-      where PROCESS_NUMBER = lv_prcss    " Номер процесса
-        and SYSTEMID       = lv_sysid.   " Уникальный идентификатор системы портф проср ссуд
+     if lvprcssd = 'X'.
+       select *
+         appending table gt_main_out_tab
+         from ZTB_PRTNRDAT_OLP
+        where PROCESS_NUMBER = lv_prcss    " Номер процесса
+          and SYSTEMID       = lv_sysid.   " Уникальный идентификатор системы портф проср ссуд
+     else.
+       select *
+         appending table gt_main_out_tab
+         from ZTB_PRTNRDAT_OLP
+        where PROCESS_NUMBER = lv_prcss    " Номер процесса
+          and SYSTEMID       = lv_sysid    " Уникальный идентификатор системы портф проср ссуд
+          and PROCESSED      = lvprcssd.
+     endif.
    endloop.
+   gt_main_out_tab_cmp[] = gt_main_out_tab[].
 *----------------------------------------------------------------------*
 * END-OF-SELECTION                                                     *
 *----------------------------------------------------------------------*
@@ -566,24 +592,152 @@ form save_data.
 endform.                   " save_data
 
 form save_data_doc.
-  modify ZTB_DOCDATA_OLP from table gt_doc_out_tab.
+* Начало: Обработка для создания новых записей
+  field-symbols: <fs_doc_out_tab> type ZTB_DOCDATA_OLP,
+                 <fs_main_data> type ZTB_PRTNRDAT_OLP.
+*--->>> ubrr 16.09.2019 Севастьянов С.В. #66416  [18-54941.1] Покупка портфеля просроченных ссуд (разработка)
+  data: ls_doc_out_tab_cmp type ZTB_DOCDATA_OLP,
+        lv_update_main_rec type char1,
+        lv_error_flg       type char1,
+        lv_data_change_flg type char1,
+        LV_PARTNER         type bu_partner,
+        lv_cnt             type I.
+*---<<< ubrr 16.09.2019 Севастьянов С.В. #66416  [18-54941.1] Покупка портфеля просроченных ссуд (разработка)
+  clear lv_error_flg.
+  clear lv_data_change_flg.
+  loop at gt_doc_out_tab assigning <fs_doc_out_tab>.
+    if <fs_doc_out_tab>-EXTERNAL_ID is initial or
+       <fs_doc_out_tab>-SYSTEMID    is initial.
+      <fs_doc_out_tab>-CLIENT         = gs_main_out_tab_edt-CLIENT.
+      <fs_doc_out_tab>-EXTERNAL_ID    = gs_main_out_tab_edt-EXTERNAL_ID.
+      <fs_doc_out_tab>-SYSTEMID       = gs_main_out_tab_edt-SYSTEMID.
+      <fs_doc_out_tab>-PROCESS_NUMBER = gs_main_out_tab_edt-PROCESS_NUMBER.
+*--->>> ubrr 16.09.2019 Севастьянов С.В. #66416  [18-54941.1] Покупка портфеля просроченных ссуд (разработка)
+* Иначе
+    else.
+* Узнаем изменились ли какие нибудь поля
+      read table gt_doc_out_tab_cmp
+      INTO ls_doc_out_tab_cmp
+      WITH KEY CLIENT      = <fs_doc_out_tab>-CLIENT
+               EXTERNAL_ID = <fs_doc_out_tab>-EXTERNAL_ID
+               SYSTEMID    = <fs_doc_out_tab>-SYSTEMID
+               TYPEDOC     = <fs_doc_out_tab>-TYPEDOC
+               SERIALDOC   = <fs_doc_out_tab>-SERIALDOC
+               NUMBERDOC   = <fs_doc_out_tab>-NUMBERDOC.
+      if sy-subrc ne 0.
+        lv_data_change_flg = 'X'.
+* Суда попадаем если есть какие то изменения
+        CALL FUNCTION 'ZFM_UTL_SSV_GET_COUNT_DOC'
+          EXPORTING IS_DOCDATA_OLP = <fs_doc_out_tab>
+          IMPORTING EV_COUNT       = LV_CNT
+                    EV_PARTNER     = LV_PARTNER.
+* Если найден такой документ то формируем ошибка
+        IF LV_CNT > 0.
+          <fs_doc_out_tab>-MARKER_ID = LV_CNT.
+          READ TABLE gt_main_out_tab
+             ASSIGNING <fs_main_data>
+             WITH KEY CLIENT      = <fs_doc_out_tab>-CLIENT
+                      EXTERNAL_ID = <fs_doc_out_tab>-EXTERNAL_ID
+                      SYSTEMID    = <fs_doc_out_tab>-SYSTEMID.
+          IF SY-SUBRC EQ 0.
+            <fs_main_data>-MARKER_ID    = 1.
+            <fs_main_data>-PROCESSED    = 2.
+            <fs_main_data>-ZRESULT_MSG  = 'Ошибка: дубликат документа'.
+            <fs_main_data>-ZRES_PARTNER = LV_PARTNER.
+            lv_update_main_rec          = 'X'.
+            lv_error_flg                = 'X'.
+          ENDIF.
+* Иначе сбрасываем маркер если он есть
+        ELSE.
+          IF <fs_doc_out_tab>-MARKER_ID NE 0.
+            <fs_doc_out_tab>-MARKER_ID = LV_CNT. " Сбросили флаг ошибки
+            READ TABLE gt_main_out_tab
+              ASSIGNING <fs_main_data>
+              WITH KEY CLIENT      = <fs_doc_out_tab>-CLIENT
+                       EXTERNAL_ID = <fs_doc_out_tab>-EXTERNAL_ID
+                       SYSTEMID    = <fs_doc_out_tab>-SYSTEMID.
+            IF SY-SUBRC                   EQ 0 AND
+               <fs_main_data>-MARKER_ID   EQ 1 AND
+               <fs_main_data>-PROCESSED   EQ 2 AND " 2 - Ошибка
+               <fs_main_data>-ZRESULT_MSG CP '*дубликат документа*'.
+* Сбросили информацию о ошибки в основной таблице
+              <fs_main_data>-MARKER_ID    = 0.
+              <fs_main_data>-PROCESSED    = 0.
+              <fs_main_data>-ZRESULT_MSG  = ''.
+              <fs_main_data>-ZRES_PARTNER = ''.
+              lv_update_main_rec          = 'X'.
+            ENDIF.
+          ENDIF.
+        ENDIF.
+      endif.
+*---<<< ubrr 16.09.2019 Севастьянов С.В. #66416  [18-54941.1] Покупка портфеля просроченных ссуд (разработка)
+    endif.
+  endloop.
+* Конец: Обработка для создания новых записей
+  delete ZTB_DOCDATA_OLP from table gt_doc_out_tab_cmp.
+  insert ZTB_DOCDATA_OLP from table gt_doc_out_tab.
+  if lv_update_main_rec EQ 'X'.
+    modify ZTB_PRTNRDAT_OLP from table gt_main_out_tab.
+    gt_main_out_tab_cmp[] = gt_main_out_tab[].
+  else.
+* Поиск и маркировка по телефонам
+  endif.
+  gt_doc_out_tab_cmp[] = gt_doc_out_tab[].
   commit work and wait.
-  message i000(0k) with 'Данные успешно сохранены'.
+
+  if lv_error_flg EQ 'X'.
+    message w000(Ok) with 'Данные сохранены, но некотор. записи были помечены'.
+  else.
+    if lv_data_change_flg EQ 'X'.
+      message i000(0k) with 'Данные успешно сохранены'.
+    else.
+      message i000(0k) with 'Нет изменений в данных'.
+    endif.
+  endif.
+
 endform.                   " save_data_doc
 
 form save_data_addr.
-  modify ZTB_ADDRDAT_OLP from table gt_addr_out_tab.
+* Начало: Обработка для создания новых записей
+  field-symbols: <fs_addr_out_tab> type ZTB_ADDRDAT_OLP.
+  loop at gt_addr_out_tab assigning <fs_addr_out_tab>.
+    if <fs_addr_out_tab>-EXTERNAL_ID is initial or
+       <fs_addr_out_tab>-SYSTEMID    is initial.
+      <fs_addr_out_tab>-CLIENT         = gs_main_out_tab_edt-CLIENT.
+      <fs_addr_out_tab>-EXTERNAL_ID    = gs_main_out_tab_edt-EXTERNAL_ID.
+      <fs_addr_out_tab>-SYSTEMID       = gs_main_out_tab_edt-SYSTEMID.
+      <fs_addr_out_tab>-PROCESS_NUMBER = gs_main_out_tab_edt-PROCESS_NUMBER.
+    endif.
+  endloop.
+* Конец: Обработка для создания новых записей
+  delete ZTB_ADDRDAT_OLP from table gt_addr_out_tab_cmp.
+  insert ZTB_ADDRDAT_OLP from table gt_addr_out_tab.
+  gt_addr_out_tab_cmp[] = gt_addr_out_tab[].
   commit work and wait.
   message i000(0k) with 'Данные успешно сохранены'.
 endform.                   " save_data_addr
 
 form save_data_telephone.
-  modify ZTB_TELNEDAT_OLP from table gt_tel_out_tab.
+* Начало: Обработка для создания новых записей
+  field-symbols: <fs_tel_out_tab> type ZTB_TELNEDAT_OLP.
+  loop at gt_tel_out_tab assigning <fs_tel_out_tab>.
+    if <fs_tel_out_tab>-EXTERNAL_ID is initial or
+       <fs_tel_out_tab>-SYSTEMID    is initial.
+      <fs_tel_out_tab>-CLIENT         = gs_main_out_tab_edt-CLIENT.
+      <fs_tel_out_tab>-EXTERNAL_ID    = gs_main_out_tab_edt-EXTERNAL_ID.
+      <fs_tel_out_tab>-SYSTEMID       = gs_main_out_tab_edt-SYSTEMID.
+      <fs_tel_out_tab>-PROCESS_NUMBER = gs_main_out_tab_edt-PROCESS_NUMBER.
+    endif.
+  endloop.
+* Конец: Обработка для создания новых записей
+  delete ZTB_TELNEDAT_OLP from table gt_tel_out_tab_cmp.
+  insert ZTB_TELNEDAT_OLP from table gt_tel_out_tab.
+  gt_tel_out_tab_cmp[] = gt_tel_out_tab[].
   commit work and wait.
   message i000(0k) with 'Данные успешно сохранены'.
 endform.                   " save_data_telephone
 
-form check_data.
+form check_data using iv_row_selected type LVC_S_ROW.
   data: lr_data_descr TYPE REF TO cl_abap_structdescr,
         ls_data       TYPE ZSTR_SSV_BPARTNER_LOADER,
         ls_main_data  type ZTB_PRTNRDAT_OLP,
@@ -603,6 +757,11 @@ form check_data.
 
   lr_data_descr ?= cl_abap_typedescr=>describe_by_data( ls_data ).
   loop at gt_main_out_tab into ls_main_data.
+
+    if iv_row_selected-INDEX ne 0.
+      read table gt_main_out_tab index iv_row_selected into ls_main_data.
+    endif.
+
     lv_rowid = sy-tabix.
     move-corresponding ls_main_data to ls_data.
     ls_data-SMTP_ADDR = ls_main_data-e_mail.
@@ -660,6 +819,9 @@ form check_data.
           EXIT.
         ENDIF.
     ENDLOOP.
+    if iv_row_selected-INDEX ne 0.
+      exit.
+    endif.
   endloop.
 *  call method gr_grid_d0100->SET_ERROR_LOG
 *    exporting IR_ALV =  gr_grid_d0100.
@@ -726,7 +888,7 @@ form d0100_fcode .
                     IMPORTING E_VALID = lv_valid.
       if lv_valid EQ 'X'.
 * Проверяем введенные данные ф. check_data
-        perform check_data.
+        perform check_data using ls_index_rows.
 * Если нет ошибок то сохраняем иначе показываем журнал ошибок
         if gv_err_logic = 'X'.
           perform display_protocol using 'X'
@@ -747,7 +909,9 @@ form d0100_fcode .
         message e001(1) with 'Необходимо выделить строку ' 'для редактирования документов'.
         return.
       endif.
-
+      loop at GT_INDEX_ROWS into ls_index_rows.
+        exit.
+      endloop.
 ************************************************************
 * Далее проверим что на этом экране все данные сохранены   *
 * Начало проверки                                          *
@@ -756,7 +920,7 @@ form d0100_fcode .
         IMPORTING E_VALID = lv_valid.
       check lv_valid EQ 'X'.
 * Проверяем введенные данные ф. check_data
-        perform check_data.
+        perform check_data using ls_index_rows.
 * Если нет ошибок то сохраняем иначе показываем журнал ошибок
         if gv_err_logic = 'X'.
           perform display_protocol using 'X'
@@ -773,8 +937,13 @@ form d0100_fcode .
 * Начало: Заполняем таблицу gt_doc_out_tab
       clear gt_doc_out_tab.
       loop at GT_INDEX_ROWS into ls_index_rows.
+        exit.
+      endloop.
+
         read table gt_main_out_tab index ls_index_rows into ls_main_out_tab.
         if sy-subrc EQ 0.
+* Запоминаем редактируемую строку основных данных
+          gs_main_out_tab_edt = ls_main_out_tab.
 * Чтение документов
           select *
             appending table gt_doc_out_tab
@@ -782,8 +951,9 @@ form d0100_fcode .
            where EXTERNAL_ID    = ls_main_out_tab-EXTERNAL_ID
              and SYSTEMID       = ls_main_out_tab-SYSTEMID
              and PROCESS_NUMBER = ls_main_out_tab-PROCESS_NUMBER.
+          gt_doc_out_tab_cmp[] = gt_doc_out_tab[].
         endif.
-      endloop.
+
 * Конец: Заполняем таблицу gt_doc_out_tab
       g_okcode       = con_exit.
       gv_next_screen = 101.
@@ -802,7 +972,9 @@ form d0100_fcode .
         message e001(1) with 'Необходимо выделить строку ' 'для редактирования адресов'.
         return.
       endif.
-
+      loop at GT_INDEX_ROWS into ls_index_rows.
+        exit.
+      endloop.
 ************************************************************
 * Далее проверим что на этом экране все данные сохранены   *
 * Начало проверки                                          *
@@ -811,7 +983,7 @@ form d0100_fcode .
         IMPORTING E_VALID = lv_valid.
       check lv_valid EQ 'X'.
 * Проверяем введенные данные ф. check_data
-        perform check_data.
+        perform check_data using ls_index_rows.
 * Если нет ошибок то сохраняем иначе показываем журнал ошибок
         if gv_err_logic = 'X'.
           perform display_protocol using 'X'
@@ -826,8 +998,12 @@ form d0100_fcode .
 ***************************************** ******************
 
       loop at GT_INDEX_ROWS into ls_index_rows.
+        exit.
+      endloop.
         read table gt_main_out_tab index ls_index_rows into ls_main_out_tab.
         if sy-subrc EQ 0.
+* Запоминаем редактируемую строку основных данных
+          gs_main_out_tab_edt = ls_main_out_tab.
 * Чтение таблицы адресов
           select *
             appending table gt_addr_out_tab
@@ -835,8 +1011,8 @@ form d0100_fcode .
            where EXTERNAL_ID    = ls_main_out_tab-EXTERNAL_ID
              and SYSTEMID       = ls_main_out_tab-SYSTEMID
              and PROCESS_NUMBER = ls_main_out_tab-PROCESS_NUMBER.
+          gt_addr_out_tab_cmp[] = gt_addr_out_tab[].
         endif.
-      endloop.
 * Конец: Заполняем таблицу gt_addr_out_tab
       g_okcode       = con_exit.
       gv_next_screen = 102.
@@ -855,6 +1031,9 @@ form d0100_fcode .
         message e001(1) with 'Необходимо выделить строку ' 'для редактирования телефонов'.
         return.
       endif.
+      loop at GT_INDEX_ROWS into ls_index_rows.
+        exit.
+      endloop.
 
 ************************************************************
 * Далее проверим что на этом экране все данные сохранены   *
@@ -864,7 +1043,7 @@ form d0100_fcode .
         IMPORTING E_VALID = lv_valid.
       check lv_valid EQ 'X'.
 * Проверяем введенные данные ф. check_data
-        perform check_data.
+        perform check_data using ls_index_rows.
 * Если нет ошибок то сохраняем иначе показываем журнал ошибок
         if gv_err_logic = 'X'.
           perform display_protocol using 'X'
@@ -879,17 +1058,22 @@ form d0100_fcode .
 ***************************************** ******************
 
       loop at GT_INDEX_ROWS into ls_index_rows.
+        exit.
+      endloop.
+
         read table gt_main_out_tab index ls_index_rows into ls_main_out_tab.
         if sy-subrc EQ 0.
-* Чтение таблицы адресов
+* Запоминаем редактируемую строку основных данных
+          gs_main_out_tab_edt = ls_main_out_tab.
+* Чтение таблицы телефонов
           select *
             appending table gt_tel_out_tab
             from ZTB_TELNEDAT_OLP
            where EXTERNAL_ID    = ls_main_out_tab-EXTERNAL_ID
              and SYSTEMID       = ls_main_out_tab-SYSTEMID
              and PROCESS_NUMBER = ls_main_out_tab-PROCESS_NUMBER.
+          gt_tel_out_tab_cmp[] = gt_tel_out_tab[].
         endif.
-      endloop.
 * Конец: Заполняем таблицу gt_tel_out_tab
       g_okcode       = con_exit.
       gv_next_screen = 103.
