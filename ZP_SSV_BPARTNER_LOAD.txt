@@ -6,11 +6,12 @@
 REPORT   ZP_SSV_BPARTNER_LOAD.
 TYPE-POOLS: vrm.
 data:
-  lv_result   TYPE string,
-  l_file      TYPE localfile,
-  gt_files    TYPE filetable,
-  g_rc        TYPE sysubrc,
-  g_act       TYPE i.
+  lv_result     TYPE string,
+  l_file        TYPE localfile,
+  gt_files      TYPE filetable,
+  g_rc          TYPE sysubrc,
+  g_act         TYPE i,
+  gv_check_idpl TYPE char1.
 
 selection-screen begin of block file_select with frame title text-100.
 
@@ -117,7 +118,11 @@ START-OF-SELECTION.
     lt_telnedat_olp   type standard table of ztb_telnedat_olp,
     ls_addrdat_olp    type ZTB_ADDRDAT_OLP,
     lt_addrdat_olp    type standard table of ZTB_ADDRDAT_OLP,
-    LV_SYSTEMID       type ZED_SSV_OLP_SYSTEMS_ID
+    LV_SYSTEMID       type ZED_SSV_OLP_SYSTEMS_ID,
+*    lv_del_przn       type char1,
+*    lv_tabix          type SYTABIX,
+    lv_find_przn      type char1,
+    lv_warrning_przn  type char1
     .
 
   data:
@@ -602,15 +607,28 @@ START-OF-SELECTION.
    modify ztb_telnedat_olp from table lt_telnedat_olp.
    modify ZTB_PRELOADBPCRD from table lt_data_inferr.
 *   commit work and wait.
+
 * Поиск и маркировка по документам
    CALL FUNCTION 'ZFM_UTL_SSV_FIND_DOCU_DATA_BP'
-     EXPORTING IV_PROCESS_NUMBER = lv_processnumber.
+     EXPORTING IV_PROCESS_NUMBER = lv_processnumber
+     IMPORTING EV_RESULT         = lv_find_przn
+        TABLES         CT_CLIENT = lt_main_data[].
+  if lv_find_przn ne 'X'.
 * Поиск и маркировка по телефонам
-   CALL FUNCTION 'ZFM_UTL_SSV_FIND_TELE_DATA_BP'
-     EXPORTING IV_PROCESS_NUMBER = lv_processnumber.
+    CALL FUNCTION 'ZFM_UTL_SSV_FIND_TELE_DATA_BP'
+      EXPORTING IV_PROCESS_NUMBER = lv_processnumber
+      IMPORTING EV_RESULT         = lv_warrning_przn
+         TABLES         CT_CLIENT = lt_main_data[].
+    if lv_warrning_przn ne 'X'.
 * Поиск и маркировка по адресам
-   CALL FUNCTION 'ZFM_UTL_SSV_FIND_ADDR_DATA_BP'
-     EXPORTING IV_PROCESS_NUMBER = lv_processnumber.
+      CALL FUNCTION 'ZFM_UTL_SSV_FIND_ADDR_DATA_BP'
+        EXPORTING IV_PROCESS_NUMBER = lv_processnumber
+        IMPORTING EV_RESULT         = lv_warrning_przn
+          TABLES          CT_CLIENT = lt_main_data[].
+    endif.
+  endif.
+* Маркировка записей
+   modify ztb_PRTNRDAT_OLP from table lt_main_data.
 * Формируем отчет в краткой форме
    CALL FUNCTION 'ZFM_UTL_SSV_SHORT_FORM_CRTREP'
      EXPORTING IV_PROCESS_NUMBER = lv_processnumber
@@ -619,10 +637,57 @@ START-OF-SELECTION.
                IV_COMMIT         = 'X'
                .
 * Вывод данных на экран
-   PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'.  " вывод на экран
-   PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'. " вывод на экран
-   WRITE 'Создан портфель просроченных ссуд под номером: '.
-   WRITE lv_olp_req_id.
+* Удаляем обработанные без ошибок записи из таблицы lt_main_data (там остаются только ошибки и предупреждения)
+   LOOP at lt_main_data TRANSPORTING NO FIELDS
+     WHERE PROCESSED eq 0.
+       DELETE lt_main_data INDEX sy-tabix.
+   ENDLOOP.
+* Удаляем обработанные с предупреждением и ошибками записи из таблицы lt_data
+   LOOP AT lt_main_data into ls_main_data.
+     READ TABLE lt_data
+       WITH KEY EXTERNAL_ID = ls_main_data-EXTERNAL_ID
+                TRANSPORTING NO FIELDS.
+     IF SY-SUBRC EQ 0.
+       DELETE lt_data INDEX sy-tabix.
+     ENDIF.
+   ENDLOOP.
+
+   if lv_warrning_przn eq 'X'.
+      PERFORM to_avl USING lt_main_data 'ZTB_PRTNRDAT_OLP'
+              'Возникли предупреждения при загрузке портфеля просроченных ссуд'.  " вывод на экран
+      WRITE 'Возникли предупреждения при загрузке портфеля просроченных ссуд'.
+      WRITE /.
+   endif.
+
+   if lv_find_przn eq 'X'.
+     PERFORM to_avl USING lt_main_data 'ZTB_PRTNRDAT_OLP'
+             'Возникли ошибки при загрузке портфеля просроченных ссуд'. " вывод на экран
+     WRITE 'Возникли ошибки при загрузке портфеля просроченных ссуд'.
+     WRITE /.
+   endif.
+
+   if lt_data_inferr[] is initial and
+      lv_find_przn ne 'X'.
+     WRITE 'Ошибок при загрузке портфеля просроченных ссуд - Нет!'.
+     WRITE /.
+   elseif lv_find_przn ne 'X'.
+     PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'
+                          'Возникли ошибки при загрузке портфеля просроченных ссуд'.  " вывод на экран
+     WRITE 'Возникли ошибки при загрузке портфеля просроченных ссуд'.
+     WRITE /.
+   endif.
+
+   if lt_data[] is not initial.
+     PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'
+                        'Успешно загруженные данные портфеля просроченных ссуд'. " вывод на экран
+     WRITE 'Создан портфель просроченных ссуд под номером: '.
+     WRITE lv_olp_req_id.
+   ELSEIF lv_warrning_przn eq 'X'.
+     WRITE 'Создан портфель просроченных ссуд под номером: '.
+     WRITE lv_olp_req_id.
+   endif.
+
+
    WRITE /.
 
 * Подпрограмма check_logical - логический контроль полей в csv
@@ -637,6 +702,54 @@ form check_logical
         LV_STR_RES   TYPE STRING,
         LV_STR_DAT   TYPE STRING,
         LV_ID_NUMBER TYPE BU_ID_NUMBER.
+
+  if i_compname eq 'IPDL'.
+    if i_value <> 0 and
+       i_value <> 3.
+      gv_check_idpl ='X'.
+    else.
+      clear gv_check_idpl.
+    endif.
+  elseif i_compname eq 'IPDLPOST' and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  elseif i_compname eq 'IPDLCOUNTRY' and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  elseif i_compname eq 'IPDLREL'  and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  elseif i_compname eq 'IPDLDESCR'  and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  elseif i_compname eq 'IPDLEMPLOYER'  and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  endif.
+
+  if i_compname eq 'PDL'.
+    if i_value <> 0 and
+       i_value <> 3.
+      gv_check_idpl ='X'.
+    else.
+      clear gv_check_idpl.
+    endif.
+  elseif i_compname eq 'PDLPOST' and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  elseif i_compname eq 'PDLCOUNTRY' and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  elseif i_compname eq 'PDLREL'  and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  elseif i_compname eq 'PDLDESCR'  and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  elseif i_compname eq 'PDLEMPLOYER'  and gv_check_idpl ='X' and i_value is initial.
+    lv_fld_index_err = i_index.
+    append 'Незаполнено обязательное поле' to p_sim_string_value.
+  endif.
 
   if i_compname eq 'TYPEDOC'.
     clear ls_id.
@@ -725,6 +838,16 @@ form check_format
   endif.
 * Конец: Проверка обязательности полей
   case i_type_kind.
+    when 'N'.
+      if  i_compname eq 'IPDL' or
+          i_compname eq 'PDL'.
+        lv_value_str = p_value.
+        if lv_value_str = 'ДА' or
+           lv_value_str = 'Да' or
+           lv_value_str = 'да'.
+          p_value = '1'.
+        endif.
+      endif.
     when 'D'.
       lv_value_str = p_value.
       check lv_value_str is not initial.
@@ -941,6 +1064,20 @@ form get_req_fld.
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 61.
   insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 63. " Населённый пункт Адр рег
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 65. " Номер дома Адр рег
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 69. " Индекс Адр рег
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 70. " Страна Адр рег
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 74. " Улица Адр жител
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 75. " Номер дома Адр жител
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 79. " Индекс Адр жител
+  insert record_fld_structure into table lt_req_fld.
 endform.
 * Формируем индексы полей в структуре ZSTR_SSV_BPARTNER_LOADER которые просто пропускаем как будто их там и нет
 form get_skip_fld.
@@ -953,7 +1090,8 @@ endform.
 *&---------------------------------------------------------------------*
 *&      Form  TO_AVL
 *&---------------------------------------------------------------------*
-FORM to_avl USING lt_tabl TYPE STANDARD TABLE lv_struct TYPE dd02l-tabname.
+FORM to_avl USING lt_tabl TYPE STANDARD TABLE lv_struct TYPE dd02l-tabname
+                  iv_title TYPE LVC_TITLE.
   DATA: ls_layout TYPE lvc_s_layo
       , lt_sort   TYPE lvc_t_sort
       , ls_sort   TYPE lvc_s_sort
@@ -967,6 +1105,7 @@ FORM to_avl USING lt_tabl TYPE STANDARD TABLE lv_struct TYPE dd02l-tabname.
       is_layout_lvc      = ls_layout
       i_structure_name   = lv_struct "
       it_sort_lvc	       = lt_sort
+      I_GRID_TITLE       = iv_title
     TABLES
       t_outtab           = lt_tabl[]. "lt_OUTB_rep[].
 ENDFORM.
