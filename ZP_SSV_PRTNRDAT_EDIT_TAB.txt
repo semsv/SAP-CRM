@@ -449,7 +449,7 @@ form d0100_set_grid_fcat changing ct_fcat type lvc_t_fcat.
        <fs_fcat>-scrtext_s  = 'Тип записи'.
        <fs_fcat>-scrtext_m  = 'Тип записи'.
        <fs_fcat>-scrtext_l  = 'Тип записи'.
-       <fs_fcat>-edit       = 'X'.
+*       <fs_fcat>-edit       = 'X'. " Исключил из доступного для редактирования т.к. поле служебное опр логику работы различных проверок, должно заполняться только программно
        <fs_fcat>-F4AVAILABL = 'X'. " Взведение этого флажка позволило вывести кустомное средство поиска подключенное ранее к таблице выводимой в гриде
        <fs_fcat>-outputlen  = 10.
     endif.
@@ -600,11 +600,14 @@ form save_data_doc.
         lv_update_main_rec type char1,
         lv_error_flg       type char1,
         lv_data_change_flg type char1,
+        lv_main_doc_flg    type char1,
         LV_PARTNER         type bu_partner,
+        LT_DOCUMENT        type standard table of ZTB_DOCDATA_OLP,
         lv_cnt             type I.
 *---<<< ubrr 16.09.2019 Севастьянов С.В. #66416  [18-54941.1] Покупка портфеля просроченных ссуд (разработка)
   clear lv_error_flg.
   clear lv_data_change_flg.
+  LT_DOCUMENT[] = gt_doc_out_tab[].
   loop at gt_doc_out_tab assigning <fs_doc_out_tab>.
     if <fs_doc_out_tab>-EXTERNAL_ID is initial or
        <fs_doc_out_tab>-SYSTEMID    is initial.
@@ -612,9 +615,8 @@ form save_data_doc.
       <fs_doc_out_tab>-EXTERNAL_ID    = gs_main_out_tab_edt-EXTERNAL_ID.
       <fs_doc_out_tab>-SYSTEMID       = gs_main_out_tab_edt-SYSTEMID.
       <fs_doc_out_tab>-PROCESS_NUMBER = gs_main_out_tab_edt-PROCESS_NUMBER.
+    endif.
 *--->>> ubrr 16.09.2019 Севастьянов С.В. #66416  [18-54941.1] Покупка портфеля просроченных ссуд (разработка)
-* Иначе
-    else.
 * Узнаем изменились ли какие нибудь поля
       read table gt_doc_out_tab_cmp
       INTO ls_doc_out_tab_cmp
@@ -627,53 +629,117 @@ form save_data_doc.
       if sy-subrc ne 0.
         lv_data_change_flg = 'X'.
 * Суда попадаем если есть какие то изменения
-        CALL FUNCTION 'ZFM_UTL_SSV_GET_COUNT_DOC'
+        CALL FUNCTION 'ZFM_UTL_SSV_PROCESS_RECDOC_OLP'
           EXPORTING IS_DOCDATA_OLP = <fs_doc_out_tab>
-          IMPORTING EV_COUNT       = LV_CNT
-                    EV_PARTNER     = LV_PARTNER.
-* Если найден такой документ то формируем ошибка
-        IF LV_CNT > 0.
-          <fs_doc_out_tab>-MARKER_ID = LV_CNT.
-          READ TABLE gt_main_out_tab
-             ASSIGNING <fs_main_data>
-             WITH KEY CLIENT      = <fs_doc_out_tab>-CLIENT
-                      EXTERNAL_ID = <fs_doc_out_tab>-EXTERNAL_ID
-                      SYSTEMID    = <fs_doc_out_tab>-SYSTEMID.
-          IF SY-SUBRC EQ 0.
-            <fs_main_data>-MARKER_ID    = 1.
-            <fs_main_data>-PROCESSED    = 2.
-            <fs_main_data>-ZRESULT_MSG  = 'Ошибка: дубликат документа'.
-            <fs_main_data>-ZRES_PARTNER = LV_PARTNER.
-            lv_update_main_rec          = 'X'.
-            lv_error_flg                = 'X'.
-          ENDIF.
-* Иначе сбрасываем маркер если он есть
-        ELSE.
-          IF <fs_doc_out_tab>-MARKER_ID NE 0.
-            <fs_doc_out_tab>-MARKER_ID = LV_CNT. " Сбросили флаг ошибки
-            READ TABLE gt_main_out_tab
-              ASSIGNING <fs_main_data>
-              WITH KEY CLIENT      = <fs_doc_out_tab>-CLIENT
-                       EXTERNAL_ID = <fs_doc_out_tab>-EXTERNAL_ID
-                       SYSTEMID    = <fs_doc_out_tab>-SYSTEMID.
-            IF SY-SUBRC                   EQ 0 AND
-               <fs_main_data>-MARKER_ID   EQ 1 AND
-               <fs_main_data>-PROCESSED   EQ 2 AND " 2 - Ошибка
-               <fs_main_data>-ZRESULT_MSG CP '*дубликат документа*'.
-* Сбросили информацию о ошибки в основной таблице
-              <fs_main_data>-MARKER_ID    = 0.
-              <fs_main_data>-PROCESSED    = 0.
-              <fs_main_data>-ZRESULT_MSG  = ''.
-              <fs_main_data>-ZRES_PARTNER = ''.
-              lv_update_main_rec          = 'X'.
-            ENDIF.
-          ENDIF.
+          IMPORTING EV_ERROR       = lv_error_flg
+             TABLES CT_CLIENT      = gt_main_out_tab
+                    CT_DOCUMENT    = LT_DOCUMENT.
+        IF lv_error_flg EQ 'X'.
+          lv_update_main_rec = 'X'.
+          EXIT.
         ENDIF.
-      endif.
+*        CALL FUNCTION 'ZFM_UTL_SSV_GET_COUNT_DOC'
+*          EXPORTING IS_DOCDATA_OLP = <fs_doc_out_tab>
+*          IMPORTING EV_COUNT       = LV_CNT
+*                    EV_PARTNER     = LV_PARTNER.
+** Если найден такой документ то
+** Если это основной документ и в случае если отличается ФИО и/или дата рождения - формируем ошибка "дубликат документа"
+** Если это основной документ и в случае если совпали ФИО и дата рождения - маркируем как "Старый ДП" - ошибок и предупреждений нет
+** Если это не основной документ маркируем как предупреждение "дубликат неосновного документа"
+*        IF LV_CNT > 0.
+**          <fs_doc_out_tab>-MARKER_ID    = LV_CNT. " Устанавливаем маркер ошибки
+**          <fs_doc_out_tab>-EXTPROCESSED = 0.      " Сброс метки записи
+*          READ TABLE gt_main_out_tab
+*             ASSIGNING <fs_main_data>
+*             WITH KEY CLIENT      = <fs_doc_out_tab>-CLIENT
+*                      EXTERNAL_ID = <fs_doc_out_tab>-EXTERNAL_ID
+*                      SYSTEMID    = <fs_doc_out_tab>-SYSTEMID.
+*          IF SY-SUBRC EQ 0.
+*            CLEAR lv_main_doc_flg.
+** Если проверяем основной документ, то установим (взведем) флажок lv_main_doc_flg
+*            IF <fs_doc_out_tab>-TYPEDOC EQ '21'.
+*              select SINGLE p~PARTNER
+*                into LV_PARTNER
+*                from but000 as p
+*                join BUT0ID as i on i~partner  eq p~partner
+*                 and i~IDNUMBER eq <fs_doc_out_tab>-NUMBERDOC
+*               where p~NAME_LAST   eq <fs_main_data>-LASTNAME
+*                 and p~NAME_FIRST  eq <fs_main_data>-FIRSTNAME
+*                 and p~NAMEMIDDLE  eq <fs_main_data>-MIDDLENAME
+*                 and ( p~BIRTHPL   eq <fs_main_data>-BIRTHPLACE or
+*                       p~BIRTHDT   eq <fs_main_data>-BIRTHDATE
+*                      )
+*                 and i~type     IN ('21', 'N21').
+*              IF SY-SUBRC EQ 0.
+*                LV_CNT = 1.
+*              ELSE.
+*                LV_CNT = 0.
+*              ENDIF.
+*              lv_main_doc_flg = 'X'.
+*            ENDIF.
+*
+*              IF LV_CNT EQ 0 AND lv_main_doc_flg EQ 'X'.
+*                <fs_main_data>-MARKER_ID      = 1. " 1 - Маркер "дубликат документа"
+*                <fs_main_data>-PROCESSED      = 2.
+*                <fs_main_data>-ZRESULT_MSG    = 'Ошибка: дубликат документа'.
+*                <fs_main_data>-ZRES_PARTNER   = LV_PARTNER.
+*                <fs_doc_out_tab>-MARKER_ID    = 0. " Сброс маркер ошибки
+*                <fs_doc_out_tab>-EXTPROCESSED = 0. " Сброс метки записи
+*                lv_error_flg                  = 'X'.
+*              ELSEIF lv_main_doc_flg NE 'X' AND
+*                     <fs_doc_out_tab>-EXTPROCESSED EQ 0. " Если эта запись уже обработана пользователем (EXTPROCESSED NE 0),- то не трогаем
+*                <fs_main_data>-MARKER_ID    = 1.
+*                <fs_main_data>-PROCESSED    = 3. " Предупреждение
+*                <fs_main_data>-ZRESULT_MSG  = 'Предупреждение: дубликат не основного документа'.
+*                <fs_main_data>-ZRES_PARTNER = LV_PARTNER.
+*                <fs_doc_out_tab>-MARKER_ID  = 11. " Установка маркер ошибки (дубликат не основного документа)
+*              ELSEIF LV_CNT > 0 AND lv_main_doc_flg EQ 'X'.
+** Старый ДП
+*                <fs_main_data>-MARKER_ID    = 10. " 10 - Маркер "Старый ДП"
+*                <fs_main_data>-PROCESSED    = 2.
+*                <fs_main_data>-ZRESULT_MSG  = 'Старый ДП'.
+*                <fs_main_data>-ZRES_PARTNER = LV_PARTNER.
+*                lv_error_flg                = 'X'.
+*              ENDIF.
+**            <fs_main_data>-EXTPROCESSED = 0.
+*            lv_update_main_rec          = 'X'.
+*            IF lv_error_flg EQ 'X'.
+*              EXIT. " Выход из цикла
+*            ENDIF.
+*          ENDIF.
+** Иначе сбрасываем маркер если он есть
+*        ELSE.
+*          IF <fs_doc_out_tab>-MARKER_ID NE 0.
+*            <fs_doc_out_tab>-MARKER_ID    = LV_CNT. " Сбросили флаг ошибки
+*            <fs_doc_out_tab>-EXTPROCESSED = 0.      " Сброс метки записи
+*            READ TABLE gt_main_out_tab
+*              ASSIGNING <fs_main_data>
+*              WITH KEY CLIENT      = <fs_doc_out_tab>-CLIENT
+*                       EXTERNAL_ID = <fs_doc_out_tab>-EXTERNAL_ID
+*                       SYSTEMID    = <fs_doc_out_tab>-SYSTEMID.
+*            IF SY-SUBRC                   EQ 0 AND
+*               <fs_main_data>-MARKER_ID   NE 0. " AND
+**               <fs_main_data>-PROCESSED   EQ 2 AND " 2 - Ошибка
+**               <fs_main_data>-ZRESULT_MSG CP '*дубликат документа*'.
+** Сбросили информацию о ошибки в основной таблице
+*              <fs_main_data>-MARKER_ID    = 0.
+*              <fs_main_data>-PROCESSED    = 0.
+*              <fs_main_data>-ZRESULT_MSG  = ''.
+*              <fs_main_data>-ZRES_PARTNER = ''.
+**              <fs_main_data>-EXTPROCESSED = 0.
+*              lv_update_main_rec          = 'X'.
+*            ENDIF.
+*          ENDIF.
+*        ENDIF.
 *---<<< ubrr 16.09.2019 Севастьянов С.В. #66416  [18-54941.1] Покупка портфеля просроченных ссуд (разработка)
     endif.
   endloop.
 * Конец: Обработка для создания новых записей
+*
+  IF lv_error_flg EQ 'X'.
+    gt_doc_out_tab[] = LT_DOCUMENT[].
+  ENDIF.
+*
   delete ZTB_DOCDATA_OLP from table gt_doc_out_tab_cmp.
   insert ZTB_DOCDATA_OLP from table gt_doc_out_tab.
   if lv_update_main_rec EQ 'X'.
@@ -1089,8 +1155,13 @@ form d0100_fcode .
           gs_screen_option-edit_mode = con_edit_mode_display.
           l_edit                     = con_off.
         when con_edit_mode_display.
-          gs_screen_option-edit_mode = con_edit_mode_change.
-          l_edit                     = con_on.
+          if lvprcssd NE 1.
+            gs_screen_option-edit_mode = con_edit_mode_change.
+            l_edit                     = con_on.
+          else.
+            gs_screen_option-edit_mode = con_edit_mode_display.
+            l_edit                     = con_off.
+          endif.
       endcase.
 
       call method gr_grid_d0100->set_ready_for_input
