@@ -1,8 +1,9 @@
-﻿FUNCTION ZFM_UTL_SSV_LOAD_BP_PRC.
+FUNCTION ZFM_UTL_SSV_LOAD_BP_PRC.
 *"----------------------------------------------------------------------
 *"*"Локальный интерфейс:
 *"  IMPORTING
 *"     REFERENCE(IV_PROC_NUM) TYPE  I
+*"     REFERENCE(IV_SYSTEM_ID) TYPE  ZED_SSV_OLP_SYSTEMS_ID
 *"     REFERENCE(IV_COMMIT) TYPE  CHAR1
 *"     REFERENCE(IV_AUGRP) TYPE  BU_AUGRP DEFAULT 'UBRR'
 *"  EXPORTING
@@ -50,12 +51,47 @@
        ,lt_olploadrepbp        type standard table of ZTB_OLPLOADREPBP.
 ******************************  ДОКУМЕНТЫ  *********************************************************************
   data: ls_idnumber           TYPE zcrmt_bupa_il_identification,
+        ls_check_iddoc        TYPE zcrmt_bupa_il_identification,
+        lv_check_add_record   TYPE CHAR1,
         lt_idnumber           TYPE TABLE OF zcrmt_bupa_il_identification,
         ls_docdata_olp        TYPE ZTB_DOCDATA_OLP,
-        lt_docdata_olp        TYPE standard table of ZTB_DOCDATA_OLP.
+        lt_docdata_olp        TYPE standard table of ZTB_DOCDATA_OLP,
+        lv_messcreatedp       TYPE TEXT255.
 *************************************************************************************************************
 
   field-symbols:<ls_cli_fiz>   type ZTB_PRTNRDAT_OLP.
+
+DEFINE _check_address_.
+  if   ls_address-country = '1'
+    or ls_address-country is initial.
+    ls_address-country = 'RU'.
+  endif.
+
+  if   ls_address-country is initial
+    or sy-subrc           <> 0.
+    ls_address-country = 'RU'.
+  endif.
+
+  translate ls_address-HOME_CITY to upper case.
+  select single ad~regiogroup
+    into ls_address-regiogroup
+    from adrreggrpt as ad
+   where ad~descript = ls_address-HOME_CITY.
+
+  if sy-subrc <> 0.
+    ls_address-regiogroup = ''.
+  endif.
+  ls_address-rem_langu       = 'R'.
+
+  CASE ls_address-PCODE1_EXT.
+    WHEN '1'.
+      ls_addr_usg-addresstype = 'ZADR_1'.
+    WHEN '2'.
+      ls_addr_usg-addresstype = 'ZADR_2'.
+    WHEN OTHERS.
+      ls_addr_usg-addresstype = 'ZADR_3'.
+  ENDCASE.
+END-OF-DEFINITION.
 
   lv_commit = IV_COMMIT.
 
@@ -63,12 +99,22 @@
     into table lt_cli_fiz[]
     from ZTB_PRTNRDAT_OLP
    where PROCESS_NUMBER = IV_PROC_NUM        " Номер процесса
+     and SYSTEMID       = IV_SYSTEM_ID       " Уникальный идентификатор системы портф проср ссуд
      and PROCESSED      = '0'.               " 0 - не обработанные, 1 - успешно, 2 - ошибка
 
 *** Поиск ДП  ***********************************************************
   CALL FUNCTION 'ZFM_UTL_SSV_FIND_BP'
     TABLES CT_CLIENT = lt_cli_fiz[].
+  modify ZTB_PRTNRDAT_OLP from table lt_cli_fiz.
+  commit work.
 *************************************************************************
+  read table lt_cli_fiz[] with key PROCESSED = '2' transporting no fields.
+  if sy-subrc eq 0.
+    lv_messcreatedp = 'Ошибка: Найден один или несколько ДП при попытке создать клиетов из портфеля!'.
+  else.
+    clear lv_messcreatedp.
+  endif.
+
   read table lt_cli_fiz[] with key PROCESSED = '0' transporting no fields.
   if sy-subrc eq 0.
     lr_core = cl_crm_bol_core=>get_instance( ).
@@ -217,9 +263,14 @@
   select *
     into table lt_docdata_olp
     from ZTB_DOCDATA_OLP
-   where EXTERNAL_ID eq <ls_cli_fiz>-EXTERNAL_ID.
+   where EXTERNAL_ID eq <ls_cli_fiz>-EXTERNAL_ID
+     and SYSTEMID    eq IV_SYSTEM_ID       " Уникальный идентификатор системы портф проср ссуд
+    .
 
-  loop at lt_docdata_olp into ls_docdata_olp.
+  loop at lt_docdata_olp into ls_docdata_olp
+  where EXTPROCESSED NE '2'
+. " Все кроме помеченных как "Исключить из обработки" - испр. от 24.09.2019 Севастьянов С.В.
+*
     ls_idnumber-identificationtype   = ls_docdata_olp-TYPEDOC.        " Вид идентификации
     ls_idnumber-zzafld000012         = ls_docdata_olp-SERIALDOC.      " Серия документа
     ls_idnumber-IDINSTITUTE          = ls_docdata_olp-IDINSTITUTEDOC. " Ответственное учреждение для идентификационного номера
@@ -234,17 +285,47 @@
       ls_idnumber-ZZAFLD000014         = ' '.
     endif.
     ls_idnumber-COUNTRY              = 'RU'.
-    append ls_idnumber to lt_idnumber.
+* Ветка для "Старый ДП"
+* Начало: Проверим что такого документа нет тогда пытаемся добавить
+* 3.  Данные полностью совпадающие с имеющимися в базе CRM НЕ ПЕРЕЗАПИСЫВАЮТСЯ (Раздел ТЗ 3.3.1)
+* Фактически означает что мы не пытаемся добавить или изменить полностью совпадающие с данными в CRM записи
+    lv_check_add_record = 'X'.
+    lr_ent_col            ?= lr_builheader->GET_RELATED_ENTITIES( IV_RELATION_NAME = 'BuilIdentificationRel'  ).
+    if lr_ent_col is bound.
+      lr_identification_ent = lr_ent_col->get_first( ).
+      while lr_identification_ent is bound.
+* Проверяем текущий документ
+        lr_identification_ent->get_properties( importing es_attributes = ls_check_iddoc ).
+        if     ls_idnumber-identificationtype     EQ ls_check_iddoc-identificationtype   " Вид идентификации
+           AND ls_idnumber-zzafld000012           EQ ls_check_iddoc-zzafld000012         " Серия документа
+           AND ls_idnumber-IDINSTITUTE            EQ ls_check_iddoc-IDINSTITUTE          " Ответственное учреждение для идентификационного номера
+           AND ls_idnumber-identificationnumber   EQ ls_check_iddoc-identificationnumber " Идентификационный номер
+           AND ls_idnumber-identrydate            EQ ls_check_iddoc-identrydate          " Дата записи для номера идентификатора
+           AND ls_idnumber-zzafld000011           EQ ls_check_iddoc-zzafld000011         " Ответсвенная инстанц
+           AND ls_idnumber-zzafld000013           EQ ls_check_iddoc-zzafld000013         " Код подразделения
+           AND ls_idnumber-idvalidtodate          EQ ls_check_iddoc-idvalidtodate        " Конец срока действия идентификационного номера
+           AND ls_idnumber-ZZAFLD000014           EQ ls_check_iddoc-ZZAFLD000014.        " Основной документ
+          CLEAR lv_check_add_record. " Все поля совпали, это значит снимаем флаг добавления записи
+        endif.
+* далее
+        lr_identification_ent = lr_ent_col->get_next( ). " Проверяем следующий документ ДП
+      endwhile.
+    endif.
+* Конец:  Проверим что такого документа нет тогда пытаемся добавить
+    if lv_check_add_record EQ 'X'.
+      append ls_idnumber to lt_idnumber.
+    endif.
   endloop.
 
   lr_ent_col            ?= lr_builheader->GET_RELATED_ENTITIES( IV_RELATION_NAME = 'BuilIdentificationRel'  ).
   if lr_ent_col is bound.
     lr_identification_ent = lr_ent_col->get_first( ).
-    while lr_identification_ent is bound.
-      lr_ent_col->remove( lr_identification_ent ).
-      lr_identification_ent->delete( ).
-      lr_identification_ent = lr_ent_col->get_first( ).
-    endwhile.
+* Документы - старые данные не трогаем !!! - испр. от 24.09.2019 Севастьянов С.В.
+*    while lr_identification_ent is bound.
+*      lr_ent_col->remove( lr_identification_ent ).
+*      lr_identification_ent->delete( ).
+*      lr_identification_ent = lr_ent_col->get_first( ).
+*    endwhile.
   endif.
 
   LOOP at lt_idnumber[] INTO ls_idnumber.
@@ -265,6 +346,7 @@
 
 ******************************  АДРЕСА  *********************************************************************
   data: ls_address            type crmt_bupa_il_address
+       ,ls_check_address      type crmt_bupa_il_address
        ,lt_address            type table of crmt_bupa_il_address
        ,ls_addrdat_olp        type ZTB_ADDRDAT_OLP
        ,lt_addrdat_olp        type standard table of ZTB_ADDRDAT_OLP
@@ -274,21 +356,49 @@
   select *
     into table lt_addrdat_olp
     from ZTB_ADDRDAT_OLP
-   where EXTERNAL_ID eq <ls_cli_fiz>-EXTERNAL_ID.
+   where EXTERNAL_ID eq <ls_cli_fiz>-EXTERNAL_ID
+     and SYSTEMID    eq IV_SYSTEM_ID       " Уникальный идентификатор системы портф проср ссуд
+   .
 
-  loop at lt_addrdat_olp into ls_addrdat_olp.
+  loop at lt_addrdat_olp into ls_addrdat_olp
+  where EXTPROCESSED NE '2'
+. " Все кроме помеченных как "Исключить из обработки"
+*
     move-corresponding ls_addrdat_olp to ls_address.
-    append ls_address to lt_address.
+* Ветка для "Старый ДП"
+* Начало: Проверим что такого адреса нет тогда пытаемся добавить
+* 3.  Данные полностью совпадающие с имеющимися в базе CRM НЕ ПЕРЕЗАПИСЫВАЮТСЯ (Раздел ТЗ 3.3.1)
+* Фактически означает что мы не пытаемся добавить или изменить полностью совпадающие с данными в CRM записи
+    lv_check_add_record = 'X'.
+    lr_ent_col            ?= lr_builheader->GET_RELATED_ENTITIES( IV_RELATION_NAME = 'BuilAddressRel' ).
+    if lr_ent_col is bound.
+      lr_addr_ent           = lr_ent_col->get_first( ).
+      while lr_addr_ent is bound.
+* Проверяем текущий адрес
+        lr_addr_ent->get_properties( importing es_attributes = ls_check_address ).
+        _check_address_.
+        if ls_check_address eq ls_address.
+          CLEAR lv_check_add_record. " Все поля совпали, это значит снимаем флаг добавления записи
+        endif.
+* далее
+        lr_addr_ent = lr_ent_col->get_next( ). " Проверяем следующий адрес ДП
+      endwhile.
+    endif.
+* Конец:  Проверим что такого адреса нет тогда пытаемся добавить
+    if lv_check_add_record EQ 'X'.
+      append ls_address to lt_address.
+    endif.
   endloop.
 
   lr_ent_col            ?= lr_builheader->GET_RELATED_ENTITIES( IV_RELATION_NAME = 'BuilAddressRel' ).
   if lr_ent_col is bound.
     lr_addr_ent           = lr_ent_col->get_first( ).
-    while lr_addr_ent is bound.
-      lr_ent_col->remove( lr_addr_ent ).
-      lr_addr_ent->delete( ).
-      lr_addr_ent = lr_ent_col->get_first( ).
-    endwhile.
+* Адреса - старые данные не трогаем !!! - испр. от 24.09.2019 Севастьянов С.В.
+*    while lr_addr_ent is bound.
+*      lr_ent_col->remove( lr_addr_ent ).
+*      lr_addr_ent->delete( ).
+*      lr_addr_ent = lr_ent_col->get_first( ).
+*    endwhile.
   endif.
 
   LOOP at lt_address[] INTO ls_address.
@@ -300,34 +410,7 @@
 
     lr_addr_ent = lr_builheader->create_related_entity( 'BuilAddressRel' ).
     if lr_addr_ent is bound.
-      if   ls_address-country = '1'
-        or ls_address-country is initial.
-        ls_address-country = 'RU'.
-      endif.
-
-      if   ls_address-country is initial
-        or sy-subrc           <> 0.
-        ls_address-country = 'RU'.
-      endif.
-
-                   translate ls_address-HOME_CITY to upper case.
-                   select single ad~regiogroup
-                   into  ls_address-regiogroup
-                   from adrreggrpt as ad
-                   where ad~descript = ls_address-HOME_CITY.
-                   if sy-subrc <> 0.
-                      ls_address-regiogroup = ''.
-                   endif.
-                   ls_address-rem_langu       = 'R'.
-
-                   CASE ls_address-PCODE1_EXT.
-                       WHEN '1'.
-                        ls_addr_usg-addresstype = 'ZADR_1'.
-                       WHEN '2'.
-                        ls_addr_usg-addresstype = 'ZADR_2'.
-                       WHEN OTHERS.
-                        ls_addr_usg-addresstype = 'ZADR_3'.
-                   ENDCASE.
+                   _check_address_.
                    lr_addr_ent->set_properties( is_attributes = ls_address ).
 *                  Создаем дочерний объект Адреса - Вид адреса
                    lr_addr_usg_ent = lr_addr_ent->create_related_entity( 'BuilAddressUsageRel' ).
@@ -359,31 +442,38 @@
   lr_ent_col ?= lr_builheader->GET_RELATED_ENTITIES( IV_RELATION_NAME = 'BuilIndependantEmailRel' ).
   if lr_ent_col is bound.
     lr_email_ent = lr_ent_col->get_first( ).
-    while lr_email_ent is bound.
-      lr_ent_col->remove( lr_email_ent ).
-      lr_email_ent->delete( ).
-      lr_email_ent = lr_ent_col->get_first( ).
-    endwhile.
+* EMAIL-Ы  - старые данные не трогаем !!! - испр. от 24.09.2019 Севастьянов С.В.
+*    while lr_email_ent is bound.
+*      lr_ent_col->remove( lr_email_ent ).
+*      lr_email_ent->delete( ).
+*      lr_email_ent = lr_ent_col->get_first( ).
+*    endwhile.
   endif.
 
-  LOOP AT lt_email[] INTO  ls_email.
-               if ls_email-e_mail CA '@'.
-                   lr_email_ent = lr_builheader->create_related_entity( 'BuilIndependantEmailRel' ).
-                   if lr_email_ent is bound.
-                      lr_email_ent->switch_to_change_mode( ).
-                      ls_email-std_no  = 'X'.
-                      lr_email_ent->set_properties( is_attributes = ls_email ).
-                   endif.
-               else.
-                   concatenate lv_comment
+DEFINE _ADD_EMAIL_TO_COMMENT.
+    concatenate lv_comment
                                'Контакт типа'   ls_email-CONSNUMBER
                                ', значение = '  ls_email-e_mail
                                                 ls_email-COMM_NOTES
                                cl_abap_char_utilities=>cr_lf
-                   into lv_comment
-                   separated by space.
-               endif." ls_email-e_mail CP '@'.
-               lr_core->modify( ).
+           into lv_comment
+   separated by space.
+END-OF-DEFINITION.
+
+  LOOP AT lt_email[] INTO  ls_email.
+    if ls_email-e_mail CA '@'.
+      lr_email_ent = lr_builheader->create_related_entity( 'BuilIndependantEmailRel' ).
+      if lr_email_ent is bound.
+        lr_email_ent->switch_to_change_mode( ).
+        ls_email-std_no  = 'X'.
+        lr_email_ent->set_properties( is_attributes = ls_email ).
+        lr_core->modify( ).
+      else.
+        _ADD_EMAIL_TO_COMMENT.
+      endif.
+    else.
+      _ADD_EMAIL_TO_COMMENT.
+    endif." ls_email-e_mail CP '@'.
   ENDLOOP." lt_email[] INTO  ls_email.
 ******************************  EMAIL-Ы  (КОНЕЦ)********************************************************************
 ******************************  ТЕЛЕФОНЫ  *******************************************************************
@@ -396,10 +486,16 @@ DATA: ls_tel                TYPE crmst_telephone_buil
   select *
     into table lt_telnedat_olp
     from ZTB_TELNEDAT_OLP
-   where EXTERNAL_ID eq <ls_cli_fiz>-EXTERNAL_ID.
+   where EXTERNAL_ID eq <ls_cli_fiz>-EXTERNAL_ID
+     and SYSTEMID    eq IV_SYSTEM_ID       " Уникальный идентификатор системы портф проср ссуд
+   .
 
   CLEAR: lt_tel[].
-  loop at lt_telnedat_olp into ls_telnedat_olp.
+
+  loop at lt_telnedat_olp into ls_telnedat_olp
+  where EXTPROCESSED NE '2'
+. " Все кроме помеченных как "Исключить из обработки"
+*
     move-corresponding ls_telnedat_olp to ls_tel.
     append ls_tel to lt_tel.
   endloop.
@@ -407,11 +503,12 @@ DATA: ls_tel                TYPE crmst_telephone_buil
   lr_ent_col ?= lr_builheader->GET_RELATED_ENTITIES( IV_RELATION_NAME = 'BuilIndependantPhoneRel' ).
   if lr_ent_col is bound.
     lr_tel_ent = lr_ent_col->get_first( ).
-    while lr_tel_ent is bound.
-      lr_ent_col->remove( lr_tel_ent ).
-      lr_tel_ent->delete( ).
-      lr_tel_ent = lr_ent_col->get_first( ).
-    endwhile.
+* ТЕЛЕФОНЫ   -    старые данные не трогаем !!! - испр. от 24.09.2019 Севастьянов С.В.
+*    while lr_tel_ent is bound.
+*      lr_ent_col->remove( lr_tel_ent ).
+*      lr_tel_ent->delete( ).
+*      lr_tel_ent = lr_ent_col->get_first( ).
+*    endwhile.
   endif.
 
              lv_consnumber_i = 1.
@@ -457,11 +554,12 @@ DATA: ls_tel                TYPE crmst_telephone_buil
   lr_ent_col ?= lr_builheader->GET_RELATED_ENTITIES( IV_RELATION_NAME = 'BuilNotesRel' ).
   if lr_ent_col is bound.
     lr_BuilNotesRel = lr_ent_col->get_first( ).
-    while lr_BuilNotesRel is bound.
-      lr_ent_col->remove( lr_BuilNotesRel ).
-      lr_BuilNotesRel->delete( ).
-      lr_BuilNotesRel = lr_ent_col->get_first( ).
-    endwhile.
+* Комментарий ДП    -    старые данные не трогаем !!! - испр. от 24.09.2019 Севастьянов С.В.
+*    while lr_BuilNotesRel is bound.
+*      lr_ent_col->remove( lr_BuilNotesRel ).
+*      lr_BuilNotesRel->delete( ).
+*      lr_BuilNotesRel = lr_ent_col->get_first( ).
+*    endwhile.
   endif.
 
              if lv_comment is not initial.
@@ -521,6 +619,7 @@ DATA: ls_tel                TYPE crmst_telephone_buil
       endloop."lt_cli_fiz[] assigning <ls_cli_fiz>.
 * Формируем отчет о загрузке ДП в систему SAP CRM (краткая форма)
     ls_olploadrepbp-PROCESS_NUMBER = IV_PROC_NUM.
+    ls_olploadrepbp-SYSTEMID       = IV_SYSTEM_ID.
     ls_olploadrepbp-CLIENT         = sy-mandt.
     ls_olploadrepbp-CREATED_BY     = SY-UNAME.
     ls_olploadrepbp-CREATE_DATE    = SY-DATUM.
@@ -539,7 +638,10 @@ DATA: ls_tel                TYPE crmst_telephone_buil
              into EV_RESULT
       separated by space.
 
-*      write: EV_RESULT.
+      if lv_messcreatedp is not initial.
+        write: lv_messcreatedp.
+        write /.
+      endif.
   endif." lt_cli_fiz[] is not initial.
 
 
