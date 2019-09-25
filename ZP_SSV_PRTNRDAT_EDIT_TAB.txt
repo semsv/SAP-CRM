@@ -261,7 +261,7 @@ data:
   LOOP AT lt_prccsd INTO ls_prccsd.
 * Исключаем из выбора пункт "Обработано успешно"
 * Такие записи редактировать нельзя т.к этот флаг означает что мы уже создавали клиента по этим данным и эта строка нужна как отчет о создании ДП
-    if ls_prccsd-PROCESSED EQ 1.
+    if ls_prccsd-PROCESSED EQ '1'.
       continue.
     endif.
     value-key  = ls_prccsd-PROCESSED.
@@ -436,6 +436,12 @@ form d0100_set_grid_fcat changing ct_fcat type lvc_t_fcat.
     if <fs_fcat>-fieldname eq 'SYSTEMID'.
       <fs_fcat>-outputlen = 10.
     endif.
+    if <fs_fcat>-fieldname eq 'EXTPROCESSED'.
+      <fs_fcat>-scrtext_s  = 'Маркер'.
+      <fs_fcat>-edit       = 'X'.
+      <fs_fcat>-F4AVAILABL = 'X'.
+      <fs_fcat>-outputlen  = 10.
+    endif.
     if <fs_fcat>-fieldname eq 'CLIENTKIND'.
        <fs_fcat>-scrtext_s  = 'Тип клиент'.  " Короткое 10 симв
        <fs_fcat>-scrtext_m  = 'Тип клиента'. " Среднее 20 симв
@@ -555,12 +561,16 @@ module d0100_exit input.
   perform d0100_exit.
 endmodule.                 " d0100_exit  INPUT
 
-form check_data_change using ev_flg_change type char1.
+form check_data_change using ev_flg_change       type char1
+                             ev_selected_index   type LVC_S_ROW.
   data:
-    ls_main_data     type ZTB_PRTNRDAT_OLP,
-    ls_main_data_cmp type ZTB_PRTNRDAT_OLP.
+    ls_main_data        type ZTB_PRTNRDAT_OLP,
+    ls_main_data_cmp    type ZTB_PRTNRDAT_OLP,
+    lv_count_change_rec type I.
 
   clear ev_flg_change.
+  lv_count_change_rec = 0.
+
   loop at gt_main_out_tab_cmp into ls_main_data.
     read table gt_main_out_tab
       INTO ls_main_data_cmp
@@ -570,24 +580,59 @@ form check_data_change using ev_flg_change type char1.
     if sy-subrc ne 0.
 * суда попадаем если пользователь удалил одну или несколько записей
       ev_flg_change = 'X'.
+      lv_count_change_rec = lv_count_change_rec + 1.
     else.
+      ev_selected_index-INDEX = sy-tabix.
       if ls_main_data_cmp <> ls_main_data.
 * суда попадаем если что то поменялось в самих данных
-        ev_flg_change = 'X'.
+        ev_flg_change       = 'X'.
+        lv_count_change_rec = lv_count_change_rec + 1.
       endif.
     endif.
   endloop.
-
+  if lv_count_change_rec > 1.
+    clear ev_selected_index.
+  endif.
 endform.
 
 form save_data.
-  data: lv_flg_change type char1.
-  perform check_data_change using lv_flg_change.
+  field-symbols: <fs_main_data> type ZTB_PRTNRDAT_OLP.
+  data: lv_flg_change type char1,
+        ls_index_rows type LVC_S_ROW,
+        ls_main_data_cmp type ZTB_PRTNRDAT_OLP.
+  perform check_data_change using lv_flg_change ls_index_rows.
   if lv_flg_change eq 'X'.
+*Начало: Проверим если изменилось ФИО и/или дата рождения и/или место рождения и есть метка 10 то снимем ее перед Маркировкой !!!
+    if ls_index_rows is not initial.
+      read table gt_main_out_tab
+        ASSIGNING <fs_main_data>
+            INDEX ls_index_rows.
+      if sy-subrc eq 0.
+        read table gt_main_out_tab_cmp
+             INTO ls_main_data_cmp
+            INDEX ls_index_rows.
+        if sy-subrc eq 0.
+          if ( ls_main_data_cmp-FIRSTNAME    NE <fs_main_data>-FIRSTNAME  OR
+               ls_main_data_cmp-LASTNAME     NE <fs_main_data>-LASTNAME   OR
+               ls_main_data_cmp-MIDDLENAME   NE <fs_main_data>-MIDDLENAME OR
+               ls_main_data_cmp-BIRTHDATE    NE <fs_main_data>-BIRTHDATE  OR
+               ls_main_data_cmp-BIRTHPLACE   NE <fs_main_data>-BIRTHPLACE ) AND
+             <fs_main_data>-MARKER_ID EQ '10'. " Старый ДП
+            <fs_main_data>-MARKER_ID = 0. " Снять маркер
+          endif.
+        endif.
+      endif.
+    endif.
+*Конец: Проверим если изменилось ФИО и/или дата рождения и/или место рождения и есть метка 10 то снимем ее перед Маркировкой !!!
+* Начало: Маркировка ДП если необходимо
+    CALL FUNCTION 'ZFM_UTL_SSV_OLPCHECK_BP'
+      TABLES CT_CLIENT = gt_main_out_tab[].
+* Конец: Маркировка ДП если необходимо
     modify ZTB_PRTNRDAT_OLP from table gt_main_out_tab.
     commit work and wait.
     message i000(0k) with 'Данные успешно сохранены'.
     gt_main_out_tab_cmp[] = gt_main_out_tab[].
+    perform d0100_frefresh. " Обновляем экран
   endif.
 endform.                   " save_data
 
@@ -597,11 +642,15 @@ form save_data_doc.
                  <fs_main_data> type ZTB_PRTNRDAT_OLP.
 
   data: ls_doc_out_tab_cmp type ZTB_DOCDATA_OLP,
-        lv_update_main_rec type char1,
+*        lv_update_main_rec type char1,
         lv_data_change_flg type char1
+*        lv_count_line      type i
         .
 
   clear lv_data_change_flg.
+
+if gs_main_out_tab_edt-PROCESSED NE '1'.
+
   loop at gt_doc_out_tab assigning <fs_doc_out_tab>.
     if <fs_doc_out_tab>-EXTERNAL_ID is initial or
        <fs_doc_out_tab>-SYSTEMID    is initial.
@@ -609,17 +658,20 @@ form save_data_doc.
       <fs_doc_out_tab>-EXTERNAL_ID    = gs_main_out_tab_edt-EXTERNAL_ID.
       <fs_doc_out_tab>-SYSTEMID       = gs_main_out_tab_edt-SYSTEMID.
       <fs_doc_out_tab>-PROCESS_NUMBER = gs_main_out_tab_edt-PROCESS_NUMBER.
+      <fs_doc_out_tab>-EXTPROCESSED   = '0'.
     endif.
 
 * Узнаем изменились ли какие нибудь поля
       read table gt_doc_out_tab_cmp
       INTO ls_doc_out_tab_cmp
-      WITH KEY CLIENT      = <fs_doc_out_tab>-CLIENT
-               EXTERNAL_ID = <fs_doc_out_tab>-EXTERNAL_ID
-               SYSTEMID    = <fs_doc_out_tab>-SYSTEMID
-               TYPEDOC     = <fs_doc_out_tab>-TYPEDOC
-               SERIALDOC   = <fs_doc_out_tab>-SERIALDOC
-               NUMBERDOC   = <fs_doc_out_tab>-NUMBERDOC.
+      WITH KEY CLIENT       = <fs_doc_out_tab>-CLIENT
+               EXTERNAL_ID  = <fs_doc_out_tab>-EXTERNAL_ID
+               SYSTEMID     = <fs_doc_out_tab>-SYSTEMID
+               TYPEDOC      = <fs_doc_out_tab>-TYPEDOC
+               SERIALDOC    = <fs_doc_out_tab>-SERIALDOC
+               NUMBERDOC    = <fs_doc_out_tab>-NUMBERDOC
+               EXTPROCESSED = <fs_doc_out_tab>-EXTPROCESSED
+               .
       if sy-subrc ne 0.
         lv_data_change_flg = 'X'.
 * Считываем клиента у которого проверяем документ
@@ -628,41 +680,58 @@ form save_data_doc.
            WITH KEY CLIENT      = <fs_doc_out_tab>-CLIENT
                     EXTERNAL_ID = <fs_doc_out_tab>-EXTERNAL_ID
                     SYSTEMID    = <fs_doc_out_tab>-SYSTEMID.
-        <fs_main_data>-PROCESSED     = 0. " Сбрасываем говоря что запись нужно заново проверить так как изменился документ
-        <fs_main_data>-MARKER_ID     = 0.
-        <fs_main_data>-ZRESULT_MSG   = ''.
-        <fs_main_data>-ZRES_PARTNER  = ''.
+        if sy-subrc eq 0.
+          <fs_main_data>-PROCESSED     = 0. " Сбрасываем говоря что запись нужно заново проверить так как изменился документ
+          <fs_main_data>-MARKER_ID     = 0.
+          <fs_main_data>-ZRESULT_MSG   = ''.
+          <fs_main_data>-ZRES_PARTNER  = ''.
+        endif.
       endif.
   endloop.
+
+ENDIF.
+
 * Конец: Обработка для создания новых записей
   IF lv_data_change_flg = 'X'.
 * Суда попадаем если есть какие то изменения
-        CALL FUNCTION 'ZFM_UTL_SSV_PROCESS_RECDOC_OLP'
-          IMPORTING EV_UPDATE_MAIN_REC = lv_update_main_rec
-             TABLES CT_CLIENT          = gt_main_out_tab
-                    CT_DOCUMENT        = gt_doc_out_tab.
-  ENDIF.
+    CALL FUNCTION 'ZFM_UTL_SSV_PROCESS_RECDOC_OLP'
+*      IMPORTING EV_UPDATE_MAIN_REC = lv_update_main_rec
+         TABLES CT_CLIENT          = gt_main_out_tab
+                CT_DOCUMENT        = gt_doc_out_tab.
+* Заключительная метка записей в зависимости от уст пометок в таблицах документы, адреса, телефоны
+    CALL FUNCTION 'ZFM_UTL_SSV_PROCESS_RECCLI_OLP'
+         TABLES CT_CLIENT          = gt_main_out_tab
+                CT_DOCUMENT        = gt_doc_out_tab
+                CT_ADDRESS         = gt_addr_out_tab
+                CT_TELEPHONE       = gt_tel_out_tab.
+*    lv_update_main_rec = 'X'.
+* Узнаем кол-во записей
+*    DESCRIBE TABLE gt_main_out_tab LINES lv_count_line.
 *
-  delete ZTB_DOCDATA_OLP from table gt_doc_out_tab_cmp.
-  insert ZTB_DOCDATA_OLP from table gt_doc_out_tab.
-  if lv_update_main_rec EQ 'X'.
+    delete ZTB_DOCDATA_OLP from table gt_doc_out_tab_cmp.
+    modify ZTB_DOCDATA_OLP from table gt_doc_out_tab.
+*    if lv_update_main_rec EQ 'X'.
     modify ZTB_PRTNRDAT_OLP from table gt_main_out_tab.
     gt_main_out_tab_cmp[] = gt_main_out_tab[].
-  else.
+*    else.
 * Поиск и маркировка по телефонам
-  endif.
-  gt_doc_out_tab_cmp[] = gt_doc_out_tab[].
-  commit work and wait.
+*    endif.
+    gt_doc_out_tab_cmp[] = gt_doc_out_tab[].
+    commit work and wait.
+  ENDIF. " Если найдены изменения данных
 
-  if lv_update_main_rec EQ 'X'.
-*    message w000(Ok) with 'Данные сохранены, но некотор. записи были помечены'.
-  else.
-    if lv_data_change_flg EQ 'X'.
-      message i000(0k) with 'Данные успешно сохранены'.
-    else.
-      message i000(0k) with 'Нет изменений в данных'.
-    endif.
-  endif.
+*  if lv_update_main_rec EQ 'X'.
+**    message w000(Ok) with 'Данные сохранены, но некотор. записи были помечены'.
+*  else.
+   if gs_main_out_tab_edt-PROCESSED EQ '1'.
+      message i000(0k) with 'Запрещено изменение обработанных записей'.
+   else.
+     if lv_data_change_flg EQ 'X'.
+       message i000(0k) with 'Данные успешно сохранены'.
+     else.
+       message i000(0k) with 'Нет изменений в данных'.
+     endif.
+   endif.
 
 endform.                   " save_data_doc
 
@@ -672,9 +741,13 @@ form save_data_addr.
                  <fs_main_data>    type ZTB_PRTNRDAT_OLP.
 
   data: ls_addr_out_tab_cmp type ZTB_ADDRDAT_OLP,
+*        lv_update_main_rec  type char1,
         lv_data_change_flg  type char1.
 
   clear lv_data_change_flg.
+* Проверяем что данная запись не явл "Успешно обработанной"
+if gs_main_out_tab_edt-PROCESSED NE '1'.
+* Идем по списку адресов
   loop at gt_addr_out_tab assigning <fs_addr_out_tab>.
     if <fs_addr_out_tab>-EXTERNAL_ID is initial or
        <fs_addr_out_tab>-SYSTEMID    is initial.
@@ -686,11 +759,13 @@ form save_data_addr.
 * Узнаем изменились ли какие нибудь поля
       read table gt_addr_out_tab_cmp
       INTO ls_addr_out_tab_cmp
-      WITH KEY CLIENT      = <fs_addr_out_tab>-CLIENT
-               EXTERNAL_ID = <fs_addr_out_tab>-EXTERNAL_ID
-               SYSTEMID    = <fs_addr_out_tab>-SYSTEMID
-               NUMBERROW   = <fs_addr_out_tab>-NUMBERROW
-               ADR_NOTES   = <fs_addr_out_tab>-ADR_NOTES.
+      WITH KEY CLIENT       = <fs_addr_out_tab>-CLIENT
+               EXTERNAL_ID  = <fs_addr_out_tab>-EXTERNAL_ID
+               SYSTEMID     = <fs_addr_out_tab>-SYSTEMID
+               NUMBERROW    = <fs_addr_out_tab>-NUMBERROW
+               ADR_NOTES    = <fs_addr_out_tab>-ADR_NOTES
+               EXTPROCESSED = <fs_addr_out_tab>-EXTPROCESSED
+               .
       if sy-subrc ne 0.
         lv_data_change_flg = 'X'.
 * Считываем клиента у которого проверяем документ
@@ -699,22 +774,57 @@ form save_data_addr.
            WITH KEY CLIENT      = <fs_addr_out_tab>-CLIENT
                     EXTERNAL_ID = <fs_addr_out_tab>-EXTERNAL_ID
                     SYSTEMID    = <fs_addr_out_tab>-SYSTEMID.
-*        <fs_main_data>-PROCESSED     = 0. " Сбрасываем говоря что запись нужно заново проверить так как изменился документ
-*        <fs_main_data>-MARKER_ID     = 0.
-*        <fs_main_data>-ZRESULT_MSG   = ''.
-*        <fs_main_data>-ZRES_PARTNER  = ''.
+        if sy-subrc eq 0.
+          <fs_main_data>-PROCESSED     = 0. " Сбрасываем говоря что запись нужно заново проверить так как изменился документ
+          <fs_main_data>-MARKER_ID     = 0.
+          <fs_main_data>-ZRESULT_MSG   = ''.
+          <fs_main_data>-ZRES_PARTNER  = ''.
+        endif.
       endif.
   endloop.
-* Конец: Обработка для создания новых записей
-  delete ZTB_ADDRDAT_OLP from table gt_addr_out_tab_cmp.
-  insert ZTB_ADDRDAT_OLP from table gt_addr_out_tab.
-  gt_addr_out_tab_cmp[] = gt_addr_out_tab[].
-  commit work and wait.
 
-  if lv_data_change_flg EQ 'X'.
-    message i000(0k) with 'Данные успешно сохранены'.
+ENDIF.
+
+* Конец: Обработка для создания новых записей
+  IF lv_data_change_flg = 'X'.
+    clear gt_doc_out_tab.
+    select *
+      appending table gt_doc_out_tab
+      from ZTB_DOCDATA_OLP
+     where EXTERNAL_ID    = gs_main_out_tab_edt-EXTERNAL_ID
+       and SYSTEMID       = gs_main_out_tab_edt-SYSTEMID
+       and PROCESS_NUMBER = gs_main_out_tab_edt-PROCESS_NUMBER.
+* Суда попадаем если есть какие то изменения
+    CALL FUNCTION 'ZFM_UTL_SSV_PROCESS_RECDOC_OLP'
+*      IMPORTING EV_UPDATE_MAIN_REC = lv_update_main_rec
+         TABLES CT_CLIENT          = gt_main_out_tab
+                CT_DOCUMENT        = gt_doc_out_tab.
+* Заключительная метка записей в зависимости от уст пометок в таблицах документы, адреса, телефоны
+    CALL FUNCTION 'ZFM_UTL_SSV_PROCESS_RECCLI_OLP'
+         TABLES CT_CLIENT          = gt_main_out_tab
+                CT_DOCUMENT        = gt_doc_out_tab
+                CT_ADDRESS         = gt_addr_out_tab
+                CT_TELEPHONE       = gt_tel_out_tab.
+*
+    delete ZTB_ADDRDAT_OLP from table gt_addr_out_tab_cmp.
+    insert ZTB_ADDRDAT_OLP from table gt_addr_out_tab.
+*    if lv_update_main_rec EQ 'X'.
+      modify ZTB_PRTNRDAT_OLP from table gt_main_out_tab.
+      gt_main_out_tab_cmp[] = gt_main_out_tab[].
+*    else.
+* Поиск и маркировка по телефонам
+*    endif.
+    gt_addr_out_tab_cmp[] = gt_addr_out_tab[].
+    commit work and wait.
+  ENDIF. " Если найдены изменения данных
+  if gs_main_out_tab_edt-PROCESSED EQ '1'.
+    message i000(0k) with 'Запрещено изменение обработанных записей'.
   else.
-    message i000(0k) with 'Нет изменений в данных'.
+    if lv_data_change_flg EQ 'X'.
+      message i000(0k) with 'Данные успешно сохранены'.
+    else.
+      message i000(0k) with 'Нет изменений в данных'.
+    endif.
   endif.
 endform.                   " save_data_addr
 
@@ -724,9 +834,13 @@ form save_data_telephone.
                  <fs_main_data> type ZTB_PRTNRDAT_OLP.
 
   data: ls_tel_out_tab_cmp type ZTB_TELNEDAT_OLP,
+*        lv_update_main_rec type char1,
         lv_data_change_flg type char1.
 
   clear lv_data_change_flg.
+
+if gs_main_out_tab_edt-PROCESSED NE '1'.
+
   loop at gt_tel_out_tab assigning <fs_tel_out_tab>.
     if <fs_tel_out_tab>-EXTERNAL_ID is initial or
        <fs_tel_out_tab>-SYSTEMID    is initial.
@@ -734,15 +848,18 @@ form save_data_telephone.
       <fs_tel_out_tab>-EXTERNAL_ID    = gs_main_out_tab_edt-EXTERNAL_ID.
       <fs_tel_out_tab>-SYSTEMID       = gs_main_out_tab_edt-SYSTEMID.
       <fs_tel_out_tab>-PROCESS_NUMBER = gs_main_out_tab_edt-PROCESS_NUMBER.
+      <fs_tel_out_tab>-EXTPROCESSED   = '0'.
     endif.
 * Узнаем изменились ли какие нибудь поля
       read table gt_tel_out_tab_cmp
       INTO ls_tel_out_tab_cmp
-      WITH KEY CLIENT      = <fs_tel_out_tab>-CLIENT
-               EXTERNAL_ID = <fs_tel_out_tab>-EXTERNAL_ID
-               SYSTEMID    = <fs_tel_out_tab>-SYSTEMID
-               NUMBERROW   = <fs_tel_out_tab>-NUMBERROW
-               COMM_NOTES  = <fs_tel_out_tab>-COMM_NOTES.
+      WITH KEY CLIENT       = <fs_tel_out_tab>-CLIENT
+               EXTERNAL_ID  = <fs_tel_out_tab>-EXTERNAL_ID
+               SYSTEMID     = <fs_tel_out_tab>-SYSTEMID
+               NUMBERROW    = <fs_tel_out_tab>-NUMBERROW
+               COMM_NOTES   = <fs_tel_out_tab>-COMM_NOTES
+               TELEPHONE    = <fs_tel_out_tab>-TELEPHONE
+               EXTPROCESSED = <fs_tel_out_tab>-EXTPROCESSED.
       if sy-subrc ne 0.
         lv_data_change_flg = 'X'.
 * Считываем клиента у которого проверяем документ
@@ -751,22 +868,58 @@ form save_data_telephone.
            WITH KEY CLIENT      = <fs_tel_out_tab>-CLIENT
                     EXTERNAL_ID = <fs_tel_out_tab>-EXTERNAL_ID
                     SYSTEMID    = <fs_tel_out_tab>-SYSTEMID.
-*        <fs_main_data>-PROCESSED     = 0. " Сбрасываем говоря что запись нужно заново проверить так как изменился документ
-*        <fs_main_data>-MARKER_ID     = 0.
-*        <fs_main_data>-ZRESULT_MSG   = ''.
-*        <fs_main_data>-ZRES_PARTNER  = ''.
+        if sy-subrc eq 0.
+          <fs_main_data>-PROCESSED     = 0. " Сбрасываем говоря что запись нужно заново проверить так как изменился документ
+          <fs_main_data>-MARKER_ID     = 0.
+          <fs_main_data>-ZRESULT_MSG   = ''.
+          <fs_main_data>-ZRES_PARTNER  = ''.
+        endif.
       endif.
   endloop.
+
+ENDIF.
+
 * Конец: Обработка для создания новых записей
+  IF lv_data_change_flg = 'X'.
+    clear gt_doc_out_tab.
+    select *
+      appending table gt_doc_out_tab
+      from ZTB_DOCDATA_OLP
+     where EXTERNAL_ID    = gs_main_out_tab_edt-EXTERNAL_ID
+       and SYSTEMID       = gs_main_out_tab_edt-SYSTEMID
+       and PROCESS_NUMBER = gs_main_out_tab_edt-PROCESS_NUMBER.
+* Суда попадаем если есть какие то изменения
+    CALL FUNCTION 'ZFM_UTL_SSV_PROCESS_RECDOC_OLP'
+*      IMPORTING EV_UPDATE_MAIN_REC = lv_update_main_rec
+         TABLES CT_CLIENT          = gt_main_out_tab
+                CT_DOCUMENT        = gt_doc_out_tab.
+* Заключительная метка записей в зависимости от уст пометок в таблицах документы, адреса, телефоны
+    CALL FUNCTION 'ZFM_UTL_SSV_PROCESS_RECCLI_OLP'
+         TABLES CT_CLIENT          = gt_main_out_tab
+                CT_DOCUMENT        = gt_doc_out_tab
+                CT_ADDRESS         = gt_addr_out_tab
+                CT_TELEPHONE       = gt_tel_out_tab.
+*
   delete ZTB_TELNEDAT_OLP from table gt_tel_out_tab_cmp.
   insert ZTB_TELNEDAT_OLP from table gt_tel_out_tab.
+*  if lv_update_main_rec EQ 'X'.
+  modify ZTB_PRTNRDAT_OLP from table gt_main_out_tab.
+  gt_main_out_tab_cmp[] = gt_main_out_tab[].
+*  else.
+* Поиск и маркировка по телефонам
+*  endif.
   gt_tel_out_tab_cmp[] = gt_tel_out_tab[].
   commit work and wait.
+ENDIF. " Если найдены изменения данных
 
-  if lv_data_change_flg EQ 'X'.
-    message i000(0k) with 'Данные успешно сохранены'.
+  if gs_main_out_tab_edt-PROCESSED EQ '1'.
+      message i000(0k) with 'Запрещено изменение обработанных записей'.
   else.
-    message i000(0k) with 'Нет изменений в данных'.
+    if lv_data_change_flg EQ 'X'.
+      message i000(0k) with 'Данные успешно сохранены'.
+    else.
+      message i000(0k) with 'Нет изменений в данных'.
+    endif.
   endif.
 endform.                   " save_data_telephone
 
@@ -861,6 +1014,28 @@ form check_data using iv_row_selected type LVC_S_ROW.
 endform.
 
 *&---------------------------------------------------------------------*
+*&      Module  d0100_frefresh INPUT
+*&---------------------------------------------------------------------*
+*       text
+* Для экрана редактирование документов
+*----------------------------------------------------------------------*
+form d0100_frefresh.
+* Обновляем экран
+    data: lt_fcat             type lvc_t_fcat,
+          ls_layo             type lvc_s_layo.
+    perform d0100_set_grid_fcat changing lt_fcat.
+    call method gr_grid_d0100->set_table_for_first_display
+          exporting
+            i_structure_name    = con_str
+            i_save              = 'A'
+            i_default           = con_true
+            is_layout           = ls_layo
+          changing
+            it_outtab           = gt_main_out_tab[]
+            it_fieldcatalog     = gt_fcat.
+endform.                    " d0100_frefresh
+
+*&---------------------------------------------------------------------*
 *&      Form  d0100_fcode
 *&---------------------------------------------------------------------*
 *       text
@@ -885,7 +1060,7 @@ form d0100_fcode .
         call method gr_grid_d0100->check_changed_data
           IMPORTING E_VALID = lv_valid.
         if lv_valid eq 'X'.
-          perform check_data_change using lv_flg_change.
+          perform check_data_change using lv_flg_change ls_index_rows.
           if lv_flg_change eq 'X'.
             perform show_warning.
             clear gv_show_warning.
@@ -920,6 +1095,8 @@ form d0100_fcode .
       call method gr_grid_d0100->check_changed_data
                     IMPORTING E_VALID = lv_valid.
       if lv_valid EQ 'X'.
+* Перед проверкой смотрим какие строки изменились
+        perform check_data_change using lv_flg_change ls_index_rows.
 * Проверяем введенные данные ф. check_data
         perform check_data using ls_index_rows.
 * Если нет ошибок то сохраняем иначе показываем журнал ошибок
@@ -1122,7 +1299,7 @@ form d0100_fcode .
           gs_screen_option-edit_mode = con_edit_mode_display.
           l_edit                     = con_off.
         when con_edit_mode_display.
-          if lvprcssd NE 1.
+          if lvprcssd NE '1'.
             gs_screen_option-edit_mode = con_edit_mode_change.
             l_edit                     = con_on.
           else.
