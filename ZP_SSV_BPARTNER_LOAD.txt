@@ -416,6 +416,8 @@ START-OF-SELECTION.
      move-corresponding ls_data to ls_docdata_olp.
      ls_docdata_olp-client         = sy-mandt.
      ls_docdata_olp-SYSTEMID       = LV_SYSTEMID.
+     ls_docdata_olp-EXTPROCESSED   = '0'.
+     ls_docdata_olp-MAINDOCUMENT   = 'X'. " Устанавливаем признак "Основной документ"
      ls_docdata_olp-NUMBERROW      = 1.
      ls_docdata_olp-PROCESS_NUMBER = lv_olp_req_id.
      append ls_docdata_olp to lt_docdata_olp.
@@ -428,6 +430,7 @@ START-OF-SELECTION.
        ls_docdata_olp-NUMBERDOC      = ls_data-SNILSDOCNUMBER.
        ls_docdata_olp-NUMBERROW      = 2.
        ls_docdata_olp-SYSTEMID       = LV_SYSTEMID.
+       ls_docdata_olp-EXTPROCESSED   = '0'.
        ls_docdata_olp-PROCESS_NUMBER = lv_olp_req_id.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
@@ -447,6 +450,7 @@ START-OF-SELECTION.
        ls_docdata_olp-IDVALIDTODATE   = ls_data-OTHERDOC_VALIDTODATE.
        ls_docdata_olp-IDENTRYDATE     = ls_data-OTHERDOC_IDENTRYDATE.
        ls_docdata_olp-SYSTEMID        = LV_SYSTEMID.
+       ls_docdata_olp-EXTPROCESSED    = '0'.
        ls_docdata_olp-PROCESS_NUMBER  = lv_olp_req_id.
        append ls_docdata_olp to lt_docdata_olp.
      endif.
@@ -599,8 +603,12 @@ START-OF-SELECTION.
 *     exit.
    endloop.
 
-   delete ZTB_PRELOADBPCRD from table lt_data_noterr.
+* Поиск и маркировка по документам
+  CALL FUNCTION 'ZFM_UTL_SSV_PROCESS_RECDOC_OLP'
+         TABLES CT_CLIENT          = lt_main_data
+                CT_DOCUMENT        = lt_docdata_olp.
 
+   delete ZTB_PRELOADBPCRD from table lt_data_noterr.
    modify ztb_PRTNRDAT_OLP from table lt_main_data.
    modify ztb_docdata_olp from table lt_docdata_olp.
    modify ztb_addrdat_olp from table lt_addrdat_olp.
@@ -608,27 +616,38 @@ START-OF-SELECTION.
    modify ZTB_PRELOADBPCRD from table lt_data_inferr.
 *   commit work and wait.
 
-* Поиск и маркировка по документам
-   CALL FUNCTION 'ZFM_UTL_SSV_FIND_DOCU_DATA_BP'
-     EXPORTING IV_PROCESS_NUMBER = lv_processnumber
-     IMPORTING EV_RESULT         = lv_find_przn
-        TABLES         CT_CLIENT = lt_main_data[].
-  if lv_find_przn ne 'X'.
-* Поиск и маркировка по телефонам
-    CALL FUNCTION 'ZFM_UTL_SSV_FIND_TELE_DATA_BP'
-      EXPORTING IV_PROCESS_NUMBER = lv_processnumber
-      IMPORTING EV_RESULT         = lv_warrning_przn
-         TABLES         CT_CLIENT = lt_main_data[].
-    if lv_warrning_przn ne 'X'.
-* Поиск и маркировка по адресам
-      CALL FUNCTION 'ZFM_UTL_SSV_FIND_ADDR_DATA_BP'
-        EXPORTING IV_PROCESS_NUMBER = lv_processnumber
-        IMPORTING EV_RESULT         = lv_warrning_przn
-          TABLES          CT_CLIENT = lt_main_data[].
-    endif.
-  endif.
+
+*   CALL FUNCTION 'ZFM_UTL_SSV_FIND_DOCU_DATA_BP'
+*     EXPORTING IV_PROCESS_NUMBER = lv_processnumber
+*     IMPORTING EV_RESULT         = lv_find_przn
+*        TABLES         CT_CLIENT = lt_main_data[].
+
+LOOP at lt_main_data TRANSPORTING NO FIELDS
+     WHERE PROCESSED eq '2'. " Ошибка
+  lv_find_przn = 'X'.
+ENDLOOP.
+
+LOOP at lt_main_data TRANSPORTING NO FIELDS
+     WHERE PROCESSED eq '3'. " Предупреждение
+  lv_warrning_przn = 'X'.
+ENDLOOP.
+
+*  if lv_find_przn ne 'X'.
+** Поиск и маркировка по телефонам
+*    CALL FUNCTION 'ZFM_UTL_SSV_FIND_TELE_DATA_BP'
+*      EXPORTING IV_PROCESS_NUMBER = lv_processnumber
+*      IMPORTING EV_RESULT         = lv_warrning_przn
+*         TABLES         CT_CLIENT = lt_main_data[].
+*    if lv_warrning_przn ne 'X'.
+** Поиск и маркировка по адресам
+*      CALL FUNCTION 'ZFM_UTL_SSV_FIND_ADDR_DATA_BP'
+*        EXPORTING IV_PROCESS_NUMBER = lv_processnumber
+*        IMPORTING EV_RESULT         = lv_warrning_przn
+*          TABLES          CT_CLIENT = lt_main_data[].
+*    endif.
+*  endif.
 * Маркировка записей
-   modify ztb_PRTNRDAT_OLP from table lt_main_data.
+*   modify ztb_PRTNRDAT_OLP from table lt_main_data.
 * Формируем отчет в краткой форме
    CALL FUNCTION 'ZFM_UTL_SSV_SHORT_FORM_CRTREP'
      EXPORTING IV_PROCESS_NUMBER = lv_processnumber
@@ -639,7 +658,8 @@ START-OF-SELECTION.
 * Вывод данных на экран
 * Удаляем обработанные без ошибок записи из таблицы lt_main_data (там остаются только ошибки и предупреждения)
    LOOP at lt_main_data TRANSPORTING NO FIELDS
-     WHERE PROCESSED eq 0.
+     WHERE PROCESSED eq '0' or
+           PROCESSED eq '4'.
        DELETE lt_main_data INDEX sy-tabix.
    ENDLOOP.
 * Удаляем обработанные с предупреждением и ошибками записи из таблицы lt_data
@@ -670,11 +690,13 @@ START-OF-SELECTION.
       lv_find_przn ne 'X'.
      WRITE 'Ошибок при загрузке портфеля просроченных ссуд - Нет!'.
      WRITE /.
-   elseif lv_find_przn ne 'X'.
+   elseif lt_data_inferr[] is not initial.
      PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'
                           'Возникли ошибки при загрузке портфеля просроченных ссуд'.  " вывод на экран
      WRITE 'Возникли ошибки при загрузке портфеля просроченных ссуд'.
      WRITE /.
+     WRITE 'Создан портфель просроченных ссуд под номером: '.
+     WRITE lv_olp_req_id.
    endif.
 
    if lt_data[] is not initial.
