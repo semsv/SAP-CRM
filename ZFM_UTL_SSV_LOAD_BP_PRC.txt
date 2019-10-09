@@ -53,6 +53,7 @@ FUNCTION ZFM_UTL_SSV_LOAD_BP_PRC.
   data: ls_idnumber           TYPE zcrmt_bupa_il_identification,
         ls_check_iddoc        TYPE zcrmt_bupa_il_identification,
         lv_check_add_record   TYPE CHAR1,
+        lv_check_olp          TYPE CHAR1, " Проверка что в портфеле есть записи по которым можно создать ДП
         lt_idnumber           TYPE TABLE OF zcrmt_bupa_il_identification,
         ls_docdata_olp        TYPE ZTB_DOCDATA_OLP,
         lt_docdata_olp        TYPE standard table of ZTB_DOCDATA_OLP,
@@ -100,30 +101,50 @@ END-OF-DEFINITION.
     from ZTB_PRTNRDAT_OLP
    where PROCESS_NUMBER = IV_PROC_NUM        " Номер процесса
      and SYSTEMID       = IV_SYSTEM_ID       " Уникальный идентификатор системы портф проср ссуд
-     and PROCESSED      = '0'.               " 0 - не обработанные, 1 - успешно, 2 - ошибка
+     and ( PROCESSED      EQ '0' or PROCESSED      EQ '4' )
+     and EXTPROCESSED     NE '2' "Исключить из обработки" - испр. от 09.10.2019 Севастьянов С.В.
+    .               " 0 - не обработанные, 1 - успешно, 2 - ошибка, 3 - Предупреждение, 4 - Готово к загрузке
 
 *** Поиск ДП  ***********************************************************
-  CALL FUNCTION 'ZFM_UTL_SSV_FIND_BP'
-    TABLES CT_CLIENT = lt_cli_fiz[].
+  CALL FUNCTION 'ZFM_UTL_SSV_OLPCHECK_BP'
+    TABLES CT_CLIENT   = lt_cli_fiz[]
+           CT_DOCUMENT = lt_docdata_olp[].
   modify ZTB_PRTNRDAT_OLP from table lt_cli_fiz.
   commit work.
 *************************************************************************
+  clear lv_messcreatedp.
   read table lt_cli_fiz[] with key PROCESSED = '2' transporting no fields.
   if sy-subrc eq 0.
-    lv_messcreatedp = 'Ошибка: Найден один или несколько ДП при попытке создать клиетов из портфеля!'.
-  else.
-    clear lv_messcreatedp.
+    lv_messcreatedp = 'Ошибка: Найден один или несколько ДП, которые не обработаны в связи с неустраненной ошибкой или предупреждением !'.
   endif.
 
-  read table lt_cli_fiz[] with key PROCESSED = '0' transporting no fields.
+  read table lt_cli_fiz[] with key PROCESSED = '3' transporting no fields.
   if sy-subrc eq 0.
+    lv_messcreatedp = 'Ошибка: Найден один или несколько ДП, которые не обработаны в связи с неустраненной ошибкой или предупреждением !'.
+  endif.
+
+  clear lv_check_olp.
+  read table lt_cli_fiz[] with key PROCESSED = '0' transporting no fields. " Берем "Не обработанные" (см. таблицу ZTB_OLP_MSG_CTLG)
+  if sy-subrc eq 0.
+    lv_check_olp = 'X'.
+  endif.
+
+  read table lt_cli_fiz[] with key PROCESSED = '4' transporting no fields. " Берем "Готово к загрузке" (см. таблицу ZTB_OLP_MSG_CTLG)
+  if sy-subrc eq 0.
+    lv_check_olp = 'X'.
+  endif.
+
+  if lv_check_olp EQ 'X'.
     lr_core = cl_crm_bol_core=>get_instance( ).
 *      lr_core->start_up( 'BP_APPL' ).
     lr_core->load_component_set( 'BP_APPL' ).
     lr_factory = lr_core->get_entity_factory( 'BuilHeader' ).
     lr_transaction ?= lr_core->get_transaction( ).
 
-    loop at  lt_cli_fiz[] assigning <ls_cli_fiz> where PROCESSED = '0'."По списку клиентов создаем ДП
+    loop at  lt_cli_fiz[] assigning <ls_cli_fiz>
+                              where PROCESSED EQ '0' OR
+                                    PROCESSED EQ '4'.
+    "  По списку клиентов создаем ДП
       CLEAR: lt_params[], lv_comment.
       if <ls_cli_fiz>-zres_partner is initial.
         ls_params-name  = 'BP_CATEGORY'.
@@ -279,11 +300,14 @@ END-OF-DEFINITION.
     ls_idnumber-zzafld000011         = ls_docdata_olp-IDINSTITUTEDOC. " Ответсвенная инстанц
     ls_idnumber-zzafld000013         = ls_docdata_olp-CODEOTDDOC.     " Код подразделения
     ls_idnumber-idvalidtodate        = ls_docdata_olp-IDVALIDTODATE.  " Конец срока действия идентификационного номера
-    if ls_docdata_olp-NUMBERROW = 1.
-      ls_idnumber-ZZAFLD000014         = 'X'. " Основной документ
-    else.
-      ls_idnumber-ZZAFLD000014         = ' '.
-    endif.
+
+* Испр от 27.09.2019 Севастьянов С.В. в таблиц ZTB_DOCDATA_OLP добавлен флаг основной документ
+*    if ls_docdata_olp-NUMBERROW = 1.
+*      ls_idnumber-ZZAFLD000014         = 'X'. " Основной документ
+*    else.
+*      ls_idnumber-ZZAFLD000014         = ' '.
+*    endif.
+    ls_idnumber-ZZAFLD000014         = ls_docdata_olp-MAINDOCUMENT.
     ls_idnumber-COUNTRY              = 'RU'.
 * Ветка для "Старый ДП"
 * Начало: Проверим что такого документа нет тогда пытаемся добавить
@@ -478,6 +502,7 @@ END-OF-DEFINITION.
 ******************************  EMAIL-Ы  (КОНЕЦ)********************************************************************
 ******************************  ТЕЛЕФОНЫ  *******************************************************************
 DATA: ls_tel                TYPE crmst_telephone_buil
+     ,ls_check_tel          TYPE crmst_telephone_buil
      ,lt_tel                TYPE TABLE OF crmst_telephone_buil
      ,ls_telnedat_olp       TYPE ztb_telnedat_olp
      ,lt_telnedat_olp       TYPE standard table of ztb_telnedat_olp.
@@ -497,7 +522,35 @@ DATA: ls_tel                TYPE crmst_telephone_buil
 . " Все кроме помеченных как "Исключить из обработки"
 *
     move-corresponding ls_telnedat_olp to ls_tel.
-    append ls_tel to lt_tel.
+* Ветка для "Старый ДП"
+* Начало: Проверим что такого адреса нет тогда пытаемся добавить
+* 3.  Данные полностью совпадающие с имеющимися в базе CRM НЕ ПЕРЕЗАПИСЫВАЮТСЯ (Раздел ТЗ 3.3.1)
+* Фактически означает что мы не пытаемся добавить или изменить полностью совпадающие с данными в CRM записи
+    lv_check_add_record = 'X'.
+    lr_ent_col ?= lr_builheader->GET_RELATED_ENTITIES( IV_RELATION_NAME = 'BuilIndependantPhoneRel' ).
+* Начало: Корректировка номера телефона
+               data lv_value type text30.
+               lv_value = ls_tel-telephone.
+               CALL FUNCTION 'ZFM_UTL_SSV_CORRECT_TELEPHONE'
+                 EXPORTING IV_PHONE = lv_value
+                 IMPORTING EV_PHONE = lv_value.
+               ls_tel-telephone  = lv_value.
+* Конец: Корректировка номера телефона
+    if lr_ent_col is bound.
+      lr_tel_ent = lr_ent_col->get_first( ).
+      while lr_tel_ent is bound.
+        lr_tel_ent->get_properties( importing es_attributes = ls_check_tel ).
+        if ls_check_tel-telephone  eq ls_tel-telephone and
+           ls_check_tel-comm_notes eq ls_tel-comm_notes.
+          CLEAR lv_check_add_record. " Все поля совпали, это значит снимаем флаг добавления записи
+        endif.
+        lr_tel_ent = lr_ent_col->get_next( ). " Проверяем следующий телефон ДП
+      endwhile.
+    endif.
+* Конец:  Проверим что такого телефона нет тогда пытаемся добавить
+    if lv_check_add_record EQ 'X'.
+      append ls_tel to lt_tel.
+    endif.
   endloop.
 
   lr_ent_col ?= lr_builheader->GET_RELATED_ENTITIES( IV_RELATION_NAME = 'BuilIndependantPhoneRel' ).
@@ -611,7 +664,7 @@ DATA: ls_tel                TYPE crmst_telephone_buil
 
          endif."if lr_builheader is not b
 *         get time stamp field <ls_cli_fiz>-ztimestamp.
-         <ls_cli_fiz>-ZRESULT_MSG = lv_comment.
+*         <ls_cli_fiz>-ZRESULT_MSG = lv_comment.
          MODIFY ZTB_PRTNRDAT_OLP from <ls_cli_fiz>.
          commit work and wait.
 *        ------------------------------------
@@ -624,6 +677,7 @@ DATA: ls_tel                TYPE crmst_telephone_buil
     ls_olploadrepbp-CREATED_BY     = SY-UNAME.
     ls_olploadrepbp-CREATE_DATE    = SY-DATUM.
     ls_olploadrepbp-CREATE_TIME    = SY-UZEIT.
+    ls_olploadrepbp-AUGRP          = IV_AUGRP.
     modify ZTB_OLPLOADREPBP from ls_olploadrepbp.
     commit work.
 * Результат - ОК
@@ -633,13 +687,20 @@ DATA: ls_tel                TYPE crmst_telephone_buil
            lv_str2 TYPE string.
       lv_str1 = '1'. " IV_CONSIGNMENT_NUM.
       lv_str2 = IV_PROC_NUM.
-      concatenate 'Не выбрано записей, удовлетворяющих условиям:' 'партия='
+      EV_RESULT = 'ERROR: '.
+      concatenate EV_RESULT
+                  'Не выбрано записей, удовлетворяющих условиям:' 'партия='
                   lv_str1 ' № процесса=' lv_str2 ' Поле результа пусто'
              into EV_RESULT
       separated by space.
+      WRITE: EV_RESULT.
+      write /.
 
       if lv_messcreatedp is not initial.
         write: lv_messcreatedp.
+        write /.
+        lv_str2 = IV_PROC_NUM.
+        write: 'Номер портфеля: ', lv_str2.
         write /.
       endif.
   endif." lt_cli_fiz[] is not initial.
