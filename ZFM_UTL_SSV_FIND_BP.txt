@@ -1,62 +1,219 @@
-﻿FUNCTION ZFM_UTL_SSV_FIND_BP.
+FUNCTION ZFM_UTL_SSV_OLPCHECK_BP .
 *"----------------------------------------------------------------------
 *"*"Локальный интерфейс:
 *"  TABLES
 *"      CT_CLIENT STRUCTURE  ZTB_PRTNRDAT_OLP
+*"      CT_DOCUMENT STRUCTURE  ZTB_DOCDATA_OLP
 *"----------------------------------------------------------------------
 field-symbols: <ls_cli_fiz> type ZTB_PRTNRDAT_OLP.
+field-symbols: <ls_document_cli> type ZTB_DOCDATA_OLP.
 
-data: lt_docdata_olp type standard table of ZTB_DOCDATA_OLP,
+data: " lt_docdata_olp type standard table of ZTB_DOCDATA_OLP,
+      lt_docdata_olp type sorted table of ZTB_DOCDATA_OLP with unique key client EXTERNAL_ID systemid PROCESS_NUMBER NUMBERROW,
       ls_docdata_olp type ZTB_DOCDATA_OLP,
       lt_but000      type standard table of but000,
       lv_comment     type string value '',
       ls_but000      type but000.
 
-  loop at CT_CLIENT[] assigning <ls_cli_fiz> where PROCESSED ne 1 and ZRES_PARTNER is initial.
+data: lv_serialdoc    type text20,
+      lv_serialdoccmp type text20.
 
-    select *
-      into table lt_docdata_olp
-      from ZTB_DOCDATA_OLP
-     where EXTERNAL_ID eq <ls_cli_fiz>-EXTERNAL_ID.
-    read table lt_docdata_olp with key EXTERNAL_ID = <ls_cli_fiz>-EXTERNAL_ID numberrow = 1 into ls_docdata_olp.
+  loop at CT_CLIENT[] assigning <ls_cli_fiz>
+    where ( PROCESSED EQ '0' OR PROCESSED EQ '4' )
+      and EXTPROCESSED ne '2'
+          . " Исключить из обработки (ZDOM_SSV_OLP_EXTPROCESSED)
 
-    select *
-      into corresponding fields of table lt_but000
-      from but000 as p
-      join BUT0ID as i on i~partner  eq p~partner
-                      and i~type     eq ls_docdata_olp-TYPEDOC
-                      and i~IDNUMBER eq ls_docdata_olp-NUMBERDOC
-     where NAME_LAST   eq <ls_cli_fiz>-LASTNAME
-       and NAME_FIRST  eq <ls_cli_fiz>-FIRSTNAME
-       and NAMEMIDDLE  eq <ls_cli_fiz>-MIDDLENAME
-       and ( BIRTHPL   eq <ls_cli_fiz>-BIRTHPLACE or
-             BIRTHDT   eq <ls_cli_fiz>-BIRTHDATE
-           ).
+    IF <ls_cli_fiz>-ZRES_PARTNER is initial or
+       <ls_cli_fiz>-MARKER_ID NE '10'.
 
-    if sy-subrc eq 0.
-      lv_comment = 'Ошибка: С такой фамилией именем отчеством и (датой) местом рождения ДП '.
-      concatenate lv_comment ' уже есть!' into lv_comment.
-      <ls_cli_fiz>-PROCESSED   = '2'.
-      <ls_cli_fiz>-ZRESULT_MSG = lv_comment.
-    else.
+      READ TABLE CT_DOCUMENT
+      WITH KEY
+           CLIENT         = <ls_cli_fiz>-CLIENT
+           EXTERNAL_ID    = <ls_cli_fiz>-EXTERNAL_ID
+           SYSTEMID       = <ls_cli_fiz>-SYSTEMID
+           PROCESS_NUMBER = <ls_cli_fiz>-PROCESS_NUMBER
+           NUMBERROW      = 1
+           transporting no fields.
+    IF SY-SUBRC NE 0.
+* Проверка на "Старый ДП"
+      select *
+        INTO table lt_docdata_olp
+        from ZTB_DOCDATA_OLP
+       where EXTERNAL_ID  eq <ls_cli_fiz>-EXTERNAL_ID
+         and SYSTEMID     eq <ls_cli_fiz>-SYSTEMID
+         and EXTPROCESSED ne '2'. " НЕ - "Исключить из обработки" (ZDOM_SSV_OLP_EXTPROCESSED)
+    ELSE.
+      lt_docdata_olp[] = CT_DOCUMENT[].
+      LOOP at lt_docdata_olp into ls_docdata_olp.
+        READ TABLE lt_docdata_olp
+          WITH KEY
+            CLIENT         = ls_docdata_olp-CLIENT
+            EXTERNAL_ID    = ls_docdata_olp-EXTERNAL_ID
+            SYSTEMID       = ls_docdata_olp-SYSTEMID
+            PROCESS_NUMBER = ls_docdata_olp-PROCESS_NUMBER
+            EXTPROCESSED   = '2' " 2 - Исключить из обработки
+            transporting no fields.
+        IF SY-SUBRC EQ 0.
+          DELETE lt_docdata_olp INDEX SY-TABIX.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDLOOP.
+    ENDIF.
+
+      read table lt_docdata_olp
+        with key CLIENT         = <ls_cli_fiz>-CLIENT
+                 EXTERNAL_ID    = <ls_cli_fiz>-EXTERNAL_ID
+                 SYSTEMID       = <ls_cli_fiz>-SYSTEMID
+                 PROCESS_NUMBER = <ls_cli_fiz>-PROCESS_NUMBER
+                 NUMBERROW      = 1
+                 MAINDOCUMENT   = 'X'
+            into ls_docdata_olp.
+
+      if sy-subrc ne 0.
+        read table lt_docdata_olp
+          with key CLIENT         = <ls_cli_fiz>-CLIENT
+                   EXTERNAL_ID    = <ls_cli_fiz>-EXTERNAL_ID
+                   SYSTEMID       = <ls_cli_fiz>-SYSTEMID
+                   PROCESS_NUMBER = <ls_cli_fiz>-PROCESS_NUMBER
+                   numberrow      = 1
+             ASSIGNING <ls_document_cli>.
+        if sy-subrc eq 0.
+          <ls_document_cli>-MAINDOCUMENT   = 'X'.
+          ls_docdata_olp = <ls_document_cli>.
+          lv_comment = 'Ошибка: основной документ - метка отсутствует'.
+          <ls_cli_fiz>-PROCESSED    = '2'. " Уровень сообщения Ошибка
+          <ls_cli_fiz>-ZRES_PARTNER = ''.
+          <ls_cli_fiz>-MARKER_ID    = '8'. " Маркер отсутствует основной документ
+          <ls_cli_fiz>-ZRESULT_MSG  = lv_comment.
+          CONTINUE.
+        endif.
+      endif.
+
+      if sy-subrc eq 0.
+
+      select *
+        into corresponding fields of table lt_but000
+        from but000 as p
+        join BUT0ID as i on i~partner  eq p~partner
+                        and i~type     eq ls_docdata_olp-TYPEDOC
+                        and i~IDNUMBER eq ls_docdata_olp-NUMBERDOC
+       where NAME_LAST   eq <ls_cli_fiz>-LASTNAME
+         and NAME_FIRST  eq <ls_cli_fiz>-FIRSTNAME
+         and NAMEMIDDLE  eq <ls_cli_fiz>-MIDDLENAME
+         and ( BIRTHPL   eq <ls_cli_fiz>-BIRTHPLACE or
+               BIRTHDT   eq <ls_cli_fiz>-BIRTHDATE
+             )
+         and p~XDELE     ne 'X'.
+
+      else.
+        lv_comment = 'Ошибка: отсутствует основной документ '.
+        <ls_cli_fiz>-PROCESSED    = '2'. " Уровень сообщения Ошибка
+        <ls_cli_fiz>-ZRES_PARTNER = ''.
+        <ls_cli_fiz>-MARKER_ID    = '8'. " Маркер отсутствует основной документ
+        <ls_cli_fiz>-ZRESULT_MSG  = lv_comment.
+        CONTINUE.
+      endif.
+
+      if sy-subrc eq 0.
+        lv_comment = 'Готово к загрузке'.
+        loop at lt_but000 into ls_but000.
+          lv_serialdoccmp = ls_docdata_olp-SERIALDOC.
+          " Начало: Поиск по уникальному ключу (CLIENT, PARTNER, TYPE, IDNUMBER)
+          select SINGLE
+                 ZZAFLD000012
+            from BUT0ID
+            into lv_serialdoc
+           where PARTNER  eq ls_but000-partner
+             and TYPE     eq ls_docdata_olp-TYPEDOC
+             and IDNUMBER eq ls_docdata_olp-NUMBERDOC.
+          " Конец: Поиск по уникальному ключу (CLIENT, PARTNER, TYPE, IDNUMBER)
+          CONDENSE lv_serialdoc NO-GAPS.
+          CONDENSE lv_serialdoccmp NO-GAPS.
+          IF lv_serialdoccmp EQ lv_serialdoc.
+            <ls_cli_fiz>-PROCESSED    = '4'. " Готово к загрузке
+            <ls_cli_fiz>-ZRES_PARTNER = ls_but000-partner.
+            <ls_cli_fiz>-MARKER_ID    = '10'. " Старый ДП (ZDOM_SSV_OLP_MARKER_ID)
+            <ls_cli_fiz>-ZRESULT_MSG  = lv_comment.
+            EXIT.
+          ENDIF.
+        endloop.
+        IF <ls_cli_fiz>-MARKER_ID EQ '10'.
+          CONTINUE.
+        ENDIF.
+      ENDIF.
+
       select *
         into corresponding fields of table lt_but000
         from but000 as p
         join BUT0ID as i on i~partner  eq p~partner
          and i~type     eq ls_docdata_olp-TYPEDOC
-         and i~IDNUMBER eq ls_docdata_olp-NUMBERDOC.
+         and i~IDNUMBER eq ls_docdata_olp-NUMBERDOC
+       where p~XDELE    ne 'X'.
 
       if sy-subrc eq 0.
-        read table lt_but000 into ls_but000 index 1.
-        lv_comment = 'Ошибка: Найден ДП '.
-        concatenate lv_comment
-                    ls_but000-partner
-                    ' c совпадающими идентификационными данными!'
-               into lv_comment.
-        <ls_cli_fiz>-PROCESSED   = '2'.
-        <ls_cli_fiz>-ZRESULT_MSG = lv_comment.
+        loop at lt_but000 into ls_but000.
+          lv_serialdoccmp = ls_docdata_olp-SERIALDOC.
+          " Начало: Поиск по уникальному ключу (CLIENT, PARTNER, TYPE, IDNUMBER)
+          select SINGLE
+                 ZZAFLD000012
+            from BUT0ID
+            into lv_serialdoc
+           where PARTNER  eq ls_but000-partner
+             and TYPE     eq ls_docdata_olp-TYPEDOC
+             and IDNUMBER eq ls_docdata_olp-NUMBERDOC.
+          " Конец: Поиск по уникальному ключу (CLIENT, PARTNER, TYPE, IDNUMBER)
+          CONDENSE lv_serialdoc NO-GAPS.
+          CONDENSE lv_serialdoccmp NO-GAPS.
+          IF lv_serialdoccmp EQ lv_serialdoc.
+            lv_comment = 'Ошибка: Дубликат документа '.
+            <ls_cli_fiz>-PROCESSED    = '2'. " Уровень сообщения Ошибка
+            <ls_cli_fiz>-ZRES_PARTNER = ls_but000-partner.
+            <ls_cli_fiz>-MARKER_ID    = '1'. " Дубликат документа (ZDOM_SSV_OLP_MARKER_ID)
+            <ls_cli_fiz>-ZRESULT_MSG  = lv_comment.
+            EXIT.
+          ENDIF.
+        endloop.
+      elseif <ls_cli_fiz>-MARKER_ID EQ '1'.
+        <ls_cli_fiz>-MARKER_ID    = 0. " Снимаем маркер так как клиент уже не находится
       endif.
-    endif.
+*      if <ls_cli_fiz>-EXTPROCESSED NE '1'.
+* Иначе поиск только по ФИО и (дата рождения и/или место рождения)
+        select *
+          into corresponding fields of table lt_but000
+          from but000 as p
+         where NAME_LAST   eq <ls_cli_fiz>-LASTNAME
+           and NAME_FIRST  eq <ls_cli_fiz>-FIRSTNAME
+           and NAMEMIDDLE  eq <ls_cli_fiz>-MIDDLENAME
+           and ( BIRTHPL   eq <ls_cli_fiz>-BIRTHPLACE or
+                 BIRTHDT   eq <ls_cli_fiz>-BIRTHDATE
+                )
+           and p~XDELE     ne 'X'.
+        if sy-subrc eq 0.
+          READ TABLE lt_but000 INTO ls_but000 INDEX 1.
+          lv_comment = 'Предупреждение: Найден клиент с таким же ФИО и ( датой рождения  или место рождения )'.
+          <ls_cli_fiz>-PROCESSED    = '3'. " Уровень сообщения Предупреждение
+          <ls_cli_fiz>-ZRES_PARTNER = ls_but000-partner.
+          <ls_cli_fiz>-MARKER_ID    = '7'.
+          <ls_cli_fiz>-ZRESULT_MSG  = lv_comment.
+        elseif <ls_cli_fiz>-MARKER_ID EQ '7'.
+          <ls_cli_fiz>-MARKER_ID = '0'. " Снимаем маркер так как клиент уже не находится
+        endif.
+*      endif.
+      if <ls_cli_fiz>-EXTPROCESSED EQ '1' AND
+         <ls_cli_fiz>-PROCESSED    EQ '3'.     " Уровень "Предупреждение"
+        lv_comment = 'Готово к загрузке'.
+        <ls_cli_fiz>-PROCESSED    = '4'. " Готово к загрузке
+        <ls_cli_fiz>-ZRES_PARTNER = ''.
+        <ls_cli_fiz>-ZRESULT_MSG  = lv_comment.
+      endif.
+      if <ls_cli_fiz>-MARKER_ID eq '0'.
+        lv_comment = 'Готово к загрузке'.
+        <ls_cli_fiz>-PROCESSED    = '4'. " Готово к загрузке
+        <ls_cli_fiz>-ZRES_PARTNER = ''.
+        <ls_cli_fiz>-ZRESULT_MSG  = lv_comment.
+      endif.
+    ENDIF.
   endloop.
 
 
