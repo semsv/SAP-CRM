@@ -122,7 +122,8 @@ START-OF-SELECTION.
 *    lv_del_przn       type char1,
 *    lv_tabix          type SYTABIX,
     lv_find_przn      type char1,
-    lv_warrning_przn  type char1
+    lv_warrning_przn  type char1,
+    lv_string_value   type string
     .
 
 *  data:
@@ -134,15 +135,20 @@ START-OF-SELECTION.
     <fs_data>       TYPE string.
 
   data:
-    lt_data_inferr  type STANDARD TABLE OF ZTB_PRELOADBPCRD,
-    ls_data_inferr  type ZTB_PRELOADBPCRD,
-    lt_data_noterr  type STANDARD TABLE OF ZTB_PRELOADBPCRD,
-    ls_data_noterr  type ZTB_PRELOADBPCRD,
-    ls_OLPCREATEREP type ZTB_OLPCREATEREP,
-    lt_OLPCREATEREP type standard table of ZTB_OLPCREATEREP,
-    lt_tab_err      type standard table of string,
-    LS_ID           type ZCRMT_BUPA_IL_IDENTIFICATION.
-
+    lt_data_inferr   type STANDARD TABLE OF ZTB_PRELOADBPCRD,
+    ls_data_inferr   type ZTB_PRELOADBPCRD,
+    lt_data_noterr   type STANDARD TABLE OF ZTB_PRELOADBPCRD,
+    ls_data_noterr   type ZTB_PRELOADBPCRD,
+    ls_OLPCREATEREP  type ZTB_OLPCREATEREP,
+    lt_OLPCREATEREP  type standard table of ZTB_OLPCREATEREP,
+    lt_tab_err       type standard table of string,
+    LS_ID            type ZCRMT_BUPA_IL_IDENTIFICATION,
+    LV_MIN_FLD_COUNT TYPE I.
+*-->> Нач. Расширение функциональности загрузка доп информации в ДП
+  data:
+    lt_load_doc_table   TYPE STANDARD TABLE OF ZSTR_SSV_DOCUMENT_OLP_LOADER,
+    lt_load_tel_table   TYPE STANDARD TABLE OF ZSTR_SSV_TELEPHONE_OLP_LOADER.
+*--<< Кон. Расширение функциональности загрузка доп информации в ДП
   perform get_req_fld.
   perform get_skip_fld.
 
@@ -228,8 +234,10 @@ START-OF-SELECTION.
       WRITE 'Возникли ошибки при загрузке дополнительных документов портфеля просроченных ссуд'.
       WRITE /.
     ENDIF.
-*    PERFORM to_avl USING lt_data 'ZSTR_SSV_BPARTNER_LOADER'
-*           'Успешно загруженные данные портфеля просроченных ссуд'. " вывод на экран
+    IF lt_load_doc_table is not initial.
+      PERFORM to_avl USING lt_load_doc_table 'ZSTR_SSV_DOCUMENT_OLP_LOADER'
+              'Успешно загруженные данные портфеля просроченных ссуд'. " вывод на экран
+    ENDIF.
     WRITE 'Создан портфель просроченных ссуд под номером: '.
     WRITE lv_olp_req_id.
     RETURN.
@@ -237,7 +245,18 @@ START-OF-SELECTION.
 * Идем по сценарию загрузки дополнительных телефонов
     WRITE 'Загрузка дополнительных телефонов'.
     WRITE /.
+    perform get_req_fld_telephones.
     perform load_csv_telephones.
+    IF lt_data_inferr is not initial.
+      PERFORM to_avl USING lt_data_inferr 'ZTB_PRELOADBPCRD'
+                           'Возникли ошибки при загрузке дополнительных телефонов'.  " вывод на экран
+      WRITE 'Возникли ошибки при загрузке дополнительных телефонов портфеля просроченных ссуд'.
+      WRITE /.
+    ENDIF.
+    IF lt_load_tel_table is not initial.
+      PERFORM to_avl USING lt_load_tel_table 'ZSTR_SSV_TELEPHONE_OLP_LOADER'
+              'Успешно загруженные данные портфеля просроченных ссуд'. " вывод на экран
+    ENDIF.
     WRITE 'Создан портфель просроченных ссуд под номером: '.
     WRITE lv_olp_req_id.
     RETURN.
@@ -246,7 +265,8 @@ START-OF-SELECTION.
 
   data: lr_data_descr TYPE REF TO cl_abap_structdescr,
         lt_data       TYPE STANDARD TABLE OF ZSTR_SSV_BPARTNER_LOADER,
-        ls_data       TYPE ZSTR_SSV_BPARTNER_LOADER.
+        ls_data       TYPE ZSTR_SSV_BPARTNER_LOADER,
+        LV_CHECK      TYPE TEXT2.
   FIELD-SYMBOLS: <ls_component> LIKE LINE OF cl_abap_structdescr=>components,
                  <lv_value> TYPE ANY.
   lr_data_descr ?= cl_abap_typedescr=>describe_by_data( ls_data ).
@@ -297,10 +317,61 @@ START-OF-SELECTION.
           lv_record_err_flg = 'X'.
           exit.
         endif.
+* Проверка на допустимые символы в идентификаторе
+      IF lv_curr_tab_idx EQ 1.
+        CONDENSE <fs_data> NO-GAPS.
+        CALL FUNCTION 'Z_FM_SSV_CHECK_STRING'
+          EXPORTING IV_VALUE  = <fs_data>
+          IMPORTING EV_RESULT = LV_CHECK.
+        IF LV_CHECK EQ 'OK'.
+        ELSE.
+          lv_fld_index_err              = lv_curr_tab_idx.
+          lv_error_txt                  = 'Идентификатор клиента содержит недопустимые символы'.
+          ls_data_inferr-CLIENT         = sy-mandt.
+          ls_data_inferr-EXTERNALID     = '999999999999'.
+          ls_data_inferr-PROCESS_NUMBER = lv_olp_req_id.
+          ls_data_inferr-SYSTEMID       = LV_SYSTEMID.
+          ls_data_inferr-CSVROWNUM      = lv_curr_row_idx.
+          ls_data_inferr-ERROR_TXT      = lv_error_txt.
+          ls_data_inferr-ERROR_IDX      = lv_fld_index_err.
+          ls_data_inferr-ERROR_VAL      = <fs_data>.
+          ls_data_inferr-LOGICAL        = 0. " Форматный контроль
+          ls_data_inferr-FILENAME       = lv_filename.
+          ls_data_inferr-CREATED_BY     = sy-uname.
+          ls_data_inferr-CREATE_DATE    = sy-datum.
+          ls_data_inferr-CREATE_TIME    = sy-uzeit.
+          append ls_data_inferr to lt_data_inferr.
+          clear lv_fld_index_err.
+          lv_record_err_flg = 'X'.
+          exit.
+        ENDIF.
+      ENDIF.
 * Если ошибок нет то продолжаем обработку полей
         <lv_value> = <fs_data>.
       endloop.
 * Конец: Проход по каждому полю таблицы csv
+* проверим кол-во обработанных полей
+      IF lv_curr_tab_idx   <= LV_MIN_FLD_COUNT AND
+         lv_record_err_flg NE 'X'.
+        lv_fld_index_err              = lv_curr_tab_idx.
+        lv_error_txt                  = 'Кол-во обработанных полей менее кол-ва обязательных полей'.
+        ls_data_inferr-CLIENT         = sy-mandt.
+        ls_data_inferr-EXTERNALID     = ls_data-EXTERNAL_ID.
+        ls_data_inferr-PROCESS_NUMBER = lv_olp_req_id.
+        ls_data_inferr-SYSTEMID       = LV_SYSTEMID.
+        ls_data_inferr-CSVROWNUM      = lv_curr_row_idx.
+        ls_data_inferr-ERROR_TXT      = lv_error_txt.
+        ls_data_inferr-ERROR_IDX      = lv_fld_index_err.
+        MOVE lv_fld_index_err TO ls_data_inferr-ERROR_VAL.
+        ls_data_inferr-LOGICAL        = 0. " Форматный контроль
+        ls_data_inferr-FILENAME       = lv_filename.
+        ls_data_inferr-CREATED_BY     = sy-uname.
+        ls_data_inferr-CREATE_DATE    = sy-datum.
+        ls_data_inferr-CREATE_TIME    = sy-uzeit.
+        append ls_data_inferr to lt_data_inferr.
+        clear lv_fld_index_err.
+        lv_record_err_flg = 'X'.
+      ENDIF.
       if lv_record_err_flg eq 'X'.
 * Если взведен флаг ошибки то ничего пока не делаем просто очищаем сам флажок
         clear lv_record_err_flg.
@@ -903,7 +974,8 @@ form check_format
 * Начало: Проверка обязательности полей
   READ TABLE lt_req_fld WITH TABLE KEY value = i_index TRANSPORTING NO FIELDS.
   if sy-subrc eq 0.
-    if p_value is initial.
+    if p_value is initial or
+       STRLEN( p_value ) = 0.
       lv_fld_index_err = i_index.
       lv_value_str     = lv_fld_index_err.
       condense lv_value_str.
@@ -1168,6 +1240,7 @@ form get_req_fld.
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 79. " Индекс Адр жител
   insert record_fld_structure into table lt_req_fld.
+  LV_MIN_FLD_COUNT           = record_fld_structure-value.
 endform.
 
 * Формируем список обязательных полей подпрограммой get_req_fld_documents
@@ -1183,6 +1256,18 @@ form get_req_fld_documents.
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 9.                        " Дата выдачи
   insert record_fld_structure into table lt_req_fld.
+  LV_MIN_FLD_COUNT           = record_fld_structure-value.
+endform.
+
+* Формируем список обязательных полей подпрограммой get_req_fld_telephones
+form get_req_fld_telephones.
+  clear lt_req_fld.
+  record_fld_structure-value = 1.                        " Идентификатор клиента
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 2.                        " Тип контакта
+  insert record_fld_structure into table lt_req_fld.
+  record_fld_structure-value = 3.                        " Номер
+  LV_MIN_FLD_COUNT           = record_fld_structure-value.
 endform.
 
 * Формируем индексы полей в структуре ZSTR_SSV_BPARTNER_LOADER которые просто пропускаем как будто их там и нет
@@ -1283,6 +1368,7 @@ form load_csv_documents.
         endif.
 * Проверка на допустимые символы в идентификаторе
       IF lv_curr_tab_idx EQ 1.
+        CONDENSE <fs_data> NO-GAPS.
         CALL FUNCTION 'Z_FM_SSV_CHECK_STRING'
           EXPORTING IV_VALUE  = <fs_data>
           IMPORTING EV_RESULT = LV_CHECK.
@@ -1400,6 +1486,10 @@ form load_csv_documents.
     modify ztb_docdata_olp from table lt_docdata_olp.
     modify ztb_addrdat_olp from table lt_addrdat_olp.
     modify ztb_telnedat_olp from table lt_telnedat_olp.
+* Добавляем запись в рез
+    loop at lt_data into ls_data where EXTERNAL_ID = lv_EXTERNALID.
+      append ls_data to lt_load_doc_table.
+    endloop.
   ENDLOOP.
   COMMIT WORK AND WAIT.
 endform.
@@ -1461,6 +1551,7 @@ form load_csv_telephones.
         endif.
 * Проверка на допустимые символы в идентификаторе
       IF lv_curr_tab_idx EQ 1.
+        CONDENSE <fs_data> NO-GAPS.
         CALL FUNCTION 'Z_FM_SSV_CHECK_STRING'
           EXPORTING IV_VALUE  = <fs_data>
           IMPORTING EV_RESULT = LV_CHECK.
@@ -1537,16 +1628,6 @@ form load_csv_telephones.
       <fs_docdata_olp>-PROCESSED      = '0'.
       <fs_docdata_olp>-EXTPROCESSED   = '0'.
     endloop.
-** Добавляем новые документы
-*    loop at lt_data into ls_data where EXTERNAL_ID = lv_EXTERNALID.
-*      move-corresponding ls_data to ls_docdata_olp.
-*      ls_docdata_olp-CLIENT         = SY-MANDT.
-*      ls_docdata_olp-SYSTEMID       = LV_SYSTEMID.
-*      ls_docdata_olp-PROCESS_NUMBER = lv_olp_req_id.
-*      ls_docdata_olp-PROCESSED      = '0'.
-*      ls_docdata_olp-EXTPROCESSED   = '0'.
-*      append ls_docdata_olp to lt_docdata_olp.
-*    endloop.
 * Считываем адреса
     select *
       into table lt_addrdat_olp
@@ -1571,11 +1652,24 @@ form load_csv_telephones.
       <fs_telnedat_olp>-SYSTEMID       = LV_SYSTEMID.
       <fs_telnedat_olp>-PROCESS_NUMBER = lv_olp_req_id.
     endloop.
+** Добавляем новые телефоны
+    loop at lt_data into ls_data where EXTERNAL_ID = lv_EXTERNALID.
+      move-corresponding ls_data to ls_telnedat_olp.
+      ls_telnedat_olp-CLIENT         = SY-MANDT.
+      ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
+      ls_telnedat_olp-PROCESS_NUMBER = lv_olp_req_id.
+      ls_telnedat_olp-EXTPROCESSED   = '0'.
+      append ls_telnedat_olp to lt_telnedat_olp.
+    endloop.
 * Модификация данных
     modify ztb_PRTNRDAT_OLP from table lt_main_data.
     modify ztb_docdata_olp from table lt_docdata_olp.
     modify ztb_addrdat_olp from table lt_addrdat_olp.
     modify ztb_telnedat_olp from table lt_telnedat_olp.
+* Добавляем запись в рез
+    loop at lt_data into ls_data where EXTERNAL_ID = lv_EXTERNALID.
+      append ls_data to lt_load_tel_table.
+    endloop.
   ENDLOOP.
   COMMIT WORK AND WAIT.
 endform.
