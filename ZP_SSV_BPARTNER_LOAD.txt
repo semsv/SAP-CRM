@@ -146,6 +146,8 @@ START-OF-SELECTION.
     LV_MIN_FLD_COUNT TYPE I.
 *-->> Нач. Расширение функциональности загрузка доп информации в ДП
   data:
+    LV_ERROR_FLG        TYPE CHAR1,
+    LV_WARRNING_FLG     TYPE CHAR1,
     lt_load_doc_table   TYPE STANDARD TABLE OF ZSTR_SSV_DOCUMENT_OLP_LOADER,
     lt_load_tel_table   TYPE STANDARD TABLE OF ZSTR_SSV_TELEPHONE_OLP_LOADER.
 *--<< Кон. Расширение функциональности загрузка доп информации в ДП
@@ -222,6 +224,9 @@ START-OF-SELECTION.
   LV_SYSTEMID           = systemid.
 
 *-->> Нач. Расширение функциональности загрузка доп информации в ДП
+  CLEAR LV_ERROR_FLG.
+  CLEAR LV_WARRNING_FLG.
+
   IF lv_filename CP '*DOCUMENT*'.
 * Идем по сценарию загрузки дополнительных документов
     WRITE 'Загрузка дополнительных документов'.
@@ -233,6 +238,7 @@ START-OF-SELECTION.
                            'Возникли ошибки при загрузке дополнительных документов'.  " вывод на экран
       WRITE 'Возникли ошибки при загрузке дополнительных документов портфеля просроченных ссуд'.
       WRITE /.
+      LV_ERROR_FLG = 'X'.
     ENDIF.
     IF lt_load_doc_table is not initial.
       PERFORM to_avl USING lt_load_doc_table 'ZSTR_SSV_DOCUMENT_OLP_LOADER'
@@ -240,6 +246,15 @@ START-OF-SELECTION.
     ENDIF.
     WRITE 'Создан портфель просроченных ссуд под номером: '.
     WRITE lv_olp_req_id.
+* Формируем отчет в краткой форме
+    CALL FUNCTION 'ZFM_UTL_SSV_SHORT_FORM_CRTREP'
+        EXPORTING IV_PROCESS_NUMBER = lv_processnumber
+                  IV_SYSTEMID       = LV_SYSTEMID
+                  IV_AUGRP          = augrp
+                  IV_COMMIT         = 'X'
+                  IV_ERROR_FLG      = LV_ERROR_FLG
+                  IV_WARRNING_FLG   = LV_WARRNING_FLG
+                  .
     RETURN.
   ELSEIF lv_filename CP '*TELEPHONE*'.
 * Идем по сценарию загрузки дополнительных телефонов
@@ -252,6 +267,7 @@ START-OF-SELECTION.
                            'Возникли ошибки при загрузке дополнительных телефонов'.  " вывод на экран
       WRITE 'Возникли ошибки при загрузке дополнительных телефонов портфеля просроченных ссуд'.
       WRITE /.
+      LV_ERROR_FLG = 'X'.
     ENDIF.
     IF lt_load_tel_table is not initial.
       PERFORM to_avl USING lt_load_tel_table 'ZSTR_SSV_TELEPHONE_OLP_LOADER'
@@ -259,6 +275,15 @@ START-OF-SELECTION.
     ENDIF.
     WRITE 'Создан портфель просроченных ссуд под номером: '.
     WRITE lv_olp_req_id.
+* Формируем отчет в краткой форме
+    CALL FUNCTION 'ZFM_UTL_SSV_SHORT_FORM_CRTREP'
+        EXPORTING IV_PROCESS_NUMBER = lv_processnumber
+                  IV_SYSTEMID       = LV_SYSTEMID
+                  IV_AUGRP          = augrp
+                  IV_COMMIT         = 'X'
+                  IV_ERROR_FLG      = LV_ERROR_FLG
+                  IV_WARRNING_FLG   = LV_WARRNING_FLG
+                  .
     RETURN.
   ENDIF.
 *--<< Кон. Расширение функциональности загрузка доп информации в ДП
@@ -1317,6 +1342,7 @@ form load_csv_documents.
         ls_data       TYPE ZSTR_SSV_DOCUMENT_OLP_LOADER,
         lt_client     TYPE STANDARD TABLE OF TEXT40,
         lv_EXTERNALID TYPE ZED_SSV_BPL_EXTERNALID,
+        LV_NUMBER     TYPE I,
         LV_CHECK      TYPE TEXT2.
   FIELD-SYMBOLS: <ls_component>    LIKE LINE OF cl_abap_structdescr=>components,
                  <lv_value>        TYPE ANY,
@@ -1440,12 +1466,14 @@ form load_csv_documents.
      where EXTERNAL_ID = lv_EXTERNALID
        AND SYSTEMID    = LV_SYSTEMID.
 * Присвоение нового номера портфеля чтобы все документы были в новом портфеле
+    LV_NUMBER = 1.
     loop at lt_docdata_olp assigning <fs_docdata_olp>.
       <fs_docdata_olp>-CLIENT         = SY-MANDT.
       <fs_docdata_olp>-SYSTEMID       = LV_SYSTEMID.
       <fs_docdata_olp>-PROCESS_NUMBER = lv_olp_req_id.
       <fs_docdata_olp>-PROCESSED      = '0'.
       <fs_docdata_olp>-EXTPROCESSED   = '0'.
+      LV_NUMBER = LV_NUMBER + 1.
     endloop.
 * Добавляем новые документы
     loop at lt_data into ls_data where EXTERNAL_ID = lv_EXTERNALID.
@@ -1455,7 +1483,12 @@ form load_csv_documents.
       ls_docdata_olp-PROCESS_NUMBER = lv_olp_req_id.
       ls_docdata_olp-PROCESSED      = '0'.
       ls_docdata_olp-EXTPROCESSED   = '0'.
+      ls_docdata_olp-NUMBERROW      = LV_NUMBER.
+      IF LV_NUMBER = 1.
+        ls_docdata_olp-MAINDOCUMENT = 'X'.
+      ENDIF.
       append ls_docdata_olp to lt_docdata_olp.
+      LV_NUMBER = LV_NUMBER + 1.
     endloop.
 * Считываем адреса
     select *
@@ -1500,6 +1533,7 @@ form load_csv_telephones.
         ls_data       TYPE ZSTR_SSV_TELEPHONE_OLP_LOADER,
         lt_client     TYPE STANDARD TABLE OF TEXT40,
         lv_EXTERNALID TYPE ZED_SSV_BPL_EXTERNALID,
+        LV_NUMBER     TYPE I,
         LV_CHECK      TYPE TEXT2.
   FIELD-SYMBOLS: <ls_component>    LIKE LINE OF cl_abap_structdescr=>components,
                  <lv_value>        TYPE ANY,
@@ -1647,10 +1681,12 @@ form load_csv_telephones.
      where EXTERNAL_ID = lv_EXTERNALID
        AND SYSTEMID    = LV_SYSTEMID.
 * Присвоение нового номера портфеля чтобы все телефоны были в новом портфеле
+    LV_NUMBER = 1.
     loop at lt_telnedat_olp assigning <fs_telnedat_olp>.
       <fs_telnedat_olp>-CLIENT         = SY-MANDT.
       <fs_telnedat_olp>-SYSTEMID       = LV_SYSTEMID.
       <fs_telnedat_olp>-PROCESS_NUMBER = lv_olp_req_id.
+      LV_NUMBER = LV_NUMBER + 1.
     endloop.
 ** Добавляем новые телефоны
     loop at lt_data into ls_data where EXTERNAL_ID = lv_EXTERNALID.
@@ -1659,7 +1695,17 @@ form load_csv_telephones.
       ls_telnedat_olp-SYSTEMID       = LV_SYSTEMID.
       ls_telnedat_olp-PROCESS_NUMBER = lv_olp_req_id.
       ls_telnedat_olp-EXTPROCESSED   = '0'.
+      ls_telnedat_olp-TELEPHONE      = ls_data-TELEPHONE_NUMBER.
+      ls_telnedat_olp-COMM_NOTES     = ls_data-NUMBER_TYPE.
+      ls_telnedat_olp-COUNTRY        = 'RU'.
+      ls_telnedat_olp-NUMBERROW      = LV_NUMBER.
+      ls_telnedat_olp-R_3_USER       = '1'.
+      ls_telnedat_olp-CONSNUMBER     = LV_NUMBER.
+      IF LV_NUMBER = 1.
+        ls_telnedat_olp-STD_NO         = 'X'.
+      ENDIF.
       append ls_telnedat_olp to lt_telnedat_olp.
+      LV_NUMBER = LV_NUMBER + 1.
     endloop.
 * Модификация данных
     modify ztb_PRTNRDAT_OLP from table lt_main_data.
