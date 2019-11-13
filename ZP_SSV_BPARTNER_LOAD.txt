@@ -952,6 +952,8 @@ form check_logical
 * Проверка СНИЛС (Идентификационный номер ПФР)
   if i_compname eq 'SNILSDOCNUMBER'.
     LV_ID_NUMBER = i_value.
+    replace all occurrences of '-' in LV_ID_NUMBER with space.
+    CONDENSE LV_ID_NUMBER NO-GAPS.
     if LV_ID_NUMBER is not initial.
       CALL FUNCTION 'ZDM_HRDATA_CHECK_PFR'
         EXPORTING  IV_PFR_NUM  = LV_ID_NUMBER
@@ -1041,6 +1043,24 @@ form check_format
                INTO lv_error_txt.
       endif.
     when 'C'.
+      if i_compname eq 'TYPEDOC'.
+        data: lt_TYPEDOC type standard table of TB039A.
+        select *
+          into table lt_TYPEDOC
+          from TB039A.
+        read table lt_TYPEDOC with key CLIENT = sy-mandt TYPE = p_value transporting no fields.
+        if sy-subrc eq 0.
+        else.
+* Если нет значит ошибка формата
+          lv_fld_index_err = i_index.
+          lv_value_str     = lv_fld_index_err.
+          condense lv_value_str.
+          CONCATENATE 'Ошибка формата(TYPEDOC), значение "' p_value '",'
+                 INTO lv_error_txt.
+          CONCATENATE lv_error_txt ' номер поля в csv "' lv_value_str '".'
+                 INTO lv_error_txt.
+        endif.
+      endif.
       if i_compname eq 'MARITALSTATUS'.
         data: lt_maritalstatus type standard table of tb027.
         select *
@@ -1278,7 +1298,7 @@ form get_req_fld_documents.
   record_fld_structure-value = 4.                        " Номер
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 5.                        " Ответственная инстанция
-  insert record_fld_structure into table lt_req_fld.
+*  insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 9.                        " Дата выдачи
   insert record_fld_structure into table lt_req_fld.
   LV_MIN_FLD_COUNT           = record_fld_structure-value.
@@ -1475,7 +1495,7 @@ form load_csv_documents.
       <fs_docdata_olp>-EXTPROCESSED   = '0'.
       LV_NUMBER = LV_NUMBER + 1.
     endloop.
-* Добавляем новые документы
+* *** НАЧАЛО: Добавляем новые документы ***
     loop at lt_data into ls_data where EXTERNAL_ID = lv_EXTERNALID.
       move-corresponding ls_data to ls_docdata_olp.
       ls_docdata_olp-CLIENT         = SY-MANDT.
@@ -1487,9 +1507,82 @@ form load_csv_documents.
       IF LV_NUMBER = 1.
         ls_docdata_olp-MAINDOCUMENT = 'X'.
       ENDIF.
+* Проверка СНИЛС
+      IF ls_docdata_olp-TYPEDOC EQ '83'.
+        DATA: LV_ID_NUMBER   TYPE BU_ID_NUMBER,
+              LV_RESULT_BOOL TYPE CHAR1.
+        LV_ID_NUMBER = ls_docdata_olp-NUMBERDOC.
+        replace all occurrences of '-' in LV_ID_NUMBER with space.
+        CONDENSE LV_ID_NUMBER NO-GAPS.
+        if LV_ID_NUMBER is not initial.
+          ls_docdata_olp-NUMBERDOC = LV_ID_NUMBER.
+          CALL FUNCTION 'ZDM_HRDATA_CHECK_PFR'
+            EXPORTING  IV_PFR_NUM  = LV_ID_NUMBER
+            IMPORTING  EV_RESULT   = LV_RESULT_BOOL
+          .
+          if LV_RESULT_BOOL ne 'X'.
+            MOVE 'Ошибка - проверка СНИЛС, неверный ИД номер ПФР' to lv_string_value.
+            ls_docdata_olp-PROCESSED   = '2'.
+            MOVE lv_string_value TO ls_docdata_olp-ZRESULT_MSG.
+          endif.
+        endif.
+      ENDIF.
+* Проверка на дубль документа
+      DATA: LV_CHECK_MAINDOC TYPE CHAR1.
+      CLEAR LV_CHECK_MAINDOC.
+      READ TABLE lt_docdata_olp
+        TRANSPORTING NO FIELDS
+        WITH KEY CLIENT       = ls_docdata_olp-CLIENT
+                 EXTERNAL_ID  = ls_docdata_olp-EXTERNAL_ID
+                 SYSTEMID     = ls_docdata_olp-SYSTEMID
+                 TYPEDOC      = ls_docdata_olp-TYPEDOC
+                 SERIALDOC    = ls_docdata_olp-SERIALDOC
+                 NUMBERDOC    = ls_docdata_olp-NUMBERDOC
+                 EXTPROCESSED = ls_docdata_olp-EXTPROCESSED.
+      IF SY-SUBRC EQ 0.
+* Если найден дубль, мы его удалим вместо него вставим новый документ и соотв придется перепроверить флаг "основной документ"
+        DELETE lt_docdata_olp INDEX SY-TABIX.
+        LV_NUMBER = 1.
+        LOOP AT lt_docdata_olp assigning <fs_docdata_olp>.
+          <fs_docdata_olp>-NUMBERROW = LV_NUMBER.
+          LV_NUMBER = LV_NUMBER + 1.
+          IF <fs_docdata_olp>-MAINDOCUMENT EQ 'X'.
+            LV_CHECK_MAINDOC = 'X'.
+          ENDIF.
+        ENDLOOP.
+        ls_docdata_olp-NUMBERROW     = LV_NUMBER.
+      ELSE.
+        LV_CHECK_MAINDOC = 'X'.
+      ENDIF.
+* Добавляем документ
       append ls_docdata_olp to lt_docdata_olp.
+* Выставление флажка при необходимости
+      IF LV_CHECK_MAINDOC NE 'X'.
+        DATA LV_COUNT_PASSPORT TYPE I.
+        LV_COUNT_PASSPORT = 0.
+        LOOP AT lt_docdata_olp assigning <fs_docdata_olp> where TYPEDOC EQ '21'.
+          LV_COUNT_PASSPORT = LV_COUNT_PASSPORT + 1.
+        ENDLOOP.
+        IF LV_COUNT_PASSPORT EQ 1.
+          LOOP AT lt_docdata_olp assigning <fs_docdata_olp> where TYPEDOC EQ '21'.
+            IF <fs_docdata_olp>-TYPEDOC EQ '21'.
+              LV_NUMBER                     = 1.
+              <fs_docdata_olp>-MAINDOCUMENT = 'X'.
+              <fs_docdata_olp>-NUMBERROW    = LV_NUMBER.
+            ENDIF.
+          ENDLOOP.
+* Проверяем необходимость перенумеровать документы
+          IF LV_NUMBER EQ 1.
+            LOOP AT lt_docdata_olp assigning <fs_docdata_olp> where TYPEDOC NE '21'.
+              LV_NUMBER = LV_NUMBER + 1.
+              <fs_docdata_olp>-NUMBERROW    = LV_NUMBER.
+            ENDLOOP.
+          ENDIF.
+        ENDIF.
+      ENDIF.
       LV_NUMBER = LV_NUMBER + 1.
     endloop.
+* *** КОНЕЦ: Добавляем новые документы ***
 * Считываем адреса
     select *
       into table lt_addrdat_olp
