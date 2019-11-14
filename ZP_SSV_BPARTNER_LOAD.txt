@@ -377,7 +377,8 @@ START-OF-SELECTION.
 * Конец: Проход по каждому полю таблицы csv
 * проверим кол-во обработанных полей
       IF lv_curr_tab_idx   <= LV_MIN_FLD_COUNT AND
-         lv_record_err_flg NE 'X'.
+         lv_record_err_flg NE 'X' AND
+         lv_curr_tab_idx   > 1.
         lv_fld_index_err              = lv_curr_tab_idx.
         lv_error_txt                  = 'Кол-во обработанных полей менее кол-ва обязательных полей'.
         ls_data_inferr-CLIENT         = sy-mandt.
@@ -396,7 +397,12 @@ START-OF-SELECTION.
         append ls_data_inferr to lt_data_inferr.
         clear lv_fld_index_err.
         lv_record_err_flg = 'X'.
+      ELSEIF lv_curr_tab_idx   <= LV_MIN_FLD_COUNT AND
+             lv_record_err_flg NE 'X' AND
+             lv_curr_tab_idx   EQ 1.
+        lv_record_err_flg = 'X'.
       ENDIF.
+
       if lv_record_err_flg eq 'X'.
 * Если взведен флаг ошибки то ничего пока не делаем просто очищаем сам флажок
         clear lv_record_err_flg.
@@ -453,7 +459,7 @@ START-OF-SELECTION.
       endloop.
 *    endloop.
 * Добавляем запись в таблицу основных данных которые предварительно проверены по формату
-        append ls_data TO lt_data.
+          append ls_data TO lt_data.
         if lv_record_err_flg ne 'X'.
 * Исключаем эту запись если ранее она была в таблице ошибок
           clear ls_data_noterr.
