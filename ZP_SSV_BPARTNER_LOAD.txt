@@ -459,7 +459,10 @@ START-OF-SELECTION.
       endloop.
 *    endloop.
 * Добавляем запись в таблицу основных данных которые предварительно проверены по формату
-          append ls_data TO lt_data.
+        append ls_data TO lt_data.
+* Очищаем для дальнейшей обработки
+        clear ls_data.
+* Проверка на ошибки
         if lv_record_err_flg ne 'X'.
 * Исключаем эту запись если ранее она была в таблице ошибок
           clear ls_data_noterr.
@@ -1803,6 +1806,33 @@ form load_csv_telephones.
       IF LV_NUMBER = 1.
         ls_telnedat_olp-STD_NO         = 'X'.
       ENDIF.
+* Проверка на дубль телефона
+      DO.
+        READ TABLE lt_telnedat_olp
+          TRANSPORTING NO FIELDS
+          WITH KEY CLIENT       = ls_telnedat_olp-CLIENT
+                   EXTERNAL_ID  = ls_telnedat_olp-EXTERNAL_ID
+                   SYSTEMID     = ls_telnedat_olp-SYSTEMID
+                   TELEPHONE    = ls_telnedat_olp-TELEPHONE
+                   COMM_NOTES   = ls_telnedat_olp-COMM_NOTES.
+* Если найден дубль, мы его удалим вместо него вставим новый телефон
+        IF SY-SUBRC EQ 0.
+          DELETE lt_telnedat_olp INDEX SY-TABIX.
+        ELSE.
+          EXIT.
+        ENDIF.
+      ENDDO.
+* Перенумеруем телефоны если были дубли
+      LV_NUMBER = 1.
+      LOOP AT lt_telnedat_olp assigning <fs_telnedat_olp>.
+        <fs_telnedat_olp>-NUMBERROW   = LV_NUMBER.
+        <fs_telnedat_olp>-CONSNUMBER  = LV_NUMBER.
+        LV_NUMBER = LV_NUMBER + 1.
+      ENDLOOP.
+* Актуализируем нумерацию
+      ls_telnedat_olp-NUMBERROW     = LV_NUMBER.
+      ls_telnedat_olp-CONSNUMBER    = LV_NUMBER.
+* Добавляем новый телефон
       append ls_telnedat_olp to lt_telnedat_olp.
       LV_NUMBER = LV_NUMBER + 1.
     endloop.
