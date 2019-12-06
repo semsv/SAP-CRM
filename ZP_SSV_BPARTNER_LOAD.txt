@@ -1306,10 +1306,10 @@ form get_req_fld_documents.
   insert record_fld_structure into table lt_req_fld.
   record_fld_structure-value = 4.                        " Номер
   insert record_fld_structure into table lt_req_fld.
-  record_fld_structure-value = 5.                        " Ответственная инстанция
+*  record_fld_structure-value = 5.                        " Ответственная инстанция
 *  insert record_fld_structure into table lt_req_fld.
-  record_fld_structure-value = 9.                        " Дата выдачи
-  insert record_fld_structure into table lt_req_fld.
+*  record_fld_structure-value = 9.                        " Дата выдачи
+*  insert record_fld_structure into table lt_req_fld.
   LV_MIN_FLD_COUNT           = record_fld_structure-value.
 endform.
 
@@ -1366,13 +1366,19 @@ endform.
 
 *-->> Нач. Расширение функциональности загрузка доп информации в ДП
 form load_csv_documents.
-  data: lr_data_descr TYPE REF TO cl_abap_structdescr,
-        lt_data       TYPE STANDARD TABLE OF ZSTR_SSV_DOCUMENT_OLP_LOADER,
-        ls_data       TYPE ZSTR_SSV_DOCUMENT_OLP_LOADER,
-        lt_client     TYPE STANDARD TABLE OF TEXT40,
-        lv_EXTERNALID TYPE ZED_SSV_BPL_EXTERNALID,
-        LV_NUMBER     TYPE I,
-        LV_CHECK      TYPE TEXT2.
+  data: lr_data_descr      TYPE REF TO cl_abap_structdescr,
+        lt_data            TYPE STANDARD TABLE OF ZSTR_SSV_DOCUMENT_OLP_LOADER,
+        ls_data            TYPE ZSTR_SSV_DOCUMENT_OLP_LOADER,
+        lt_client          TYPE STANDARD TABLE OF TEXT40,
+        lv_EXTERNALID      TYPE ZED_SSV_BPL_EXTERNALID,
+        LV_NUMBER          TYPE I,
+        LV_CHECK           TYPE TEXT2,
+        LV_ID_NUMBER       TYPE BU_ID_NUMBER,
+        LV_RESULT_BOOL     TYPE CHAR1,
+        LV_CHECK_MAINDOC   TYPE CHAR1,
+        LS_ID              TYPE ZCRMT_BUPA_IL_IDENTIFICATION,
+        p_sim_string_value TYPE ZTB_SIM_STRING,
+        LV_COUNT_PASSPORT  TYPE I.
   FIELD-SYMBOLS: <ls_component>    LIKE LINE OF cl_abap_structdescr=>components,
                  <lv_value>        TYPE ANY,
                  <fs_docdata_olp>  type ZTB_DOCDATA_OLP,
@@ -1453,15 +1459,75 @@ form load_csv_documents.
 * Если ошибок нет то продолжаем обработку полей
       <lv_value> = <fs_data>.
     ENDLOOP.
+* Для паспорта проверим что заполнено поле дата выдачи паспорта
+    IF ls_data-TYPEDOC EQ '21'.
+      IF ls_data-IDENTRYDATE IS INITIAL OR
+         ls_data-IDENTRYDATE EQ '00000000' OR
+         STRLEN( ls_data-IDENTRYDATE ) EQ 0.
+        lv_curr_tab_idx               = 9.
+        lv_fld_index_err              = lv_curr_tab_idx.
+        lv_error_txt                  = 'Незаполнено обязательное поле дата выдачи паспорта'.
+        ls_data_inferr-CLIENT         = sy-mandt.
+        ls_data_inferr-EXTERNALID     = ls_data-EXTERNAL_ID.
+        ls_data_inferr-PROCESS_NUMBER = lv_olp_req_id.
+        ls_data_inferr-SYSTEMID       = LV_SYSTEMID.
+        ls_data_inferr-CSVROWNUM      = lv_curr_row_idx.
+        ls_data_inferr-ERROR_TXT      = lv_error_txt.
+        ls_data_inferr-ERROR_IDX      = lv_fld_index_err.
+        ls_data_inferr-ERROR_VAL      = ls_data-IDENTRYDATE.
+        ls_data_inferr-LOGICAL        = 0. " Форматный контроль
+        ls_data_inferr-FILENAME       = lv_filename.
+        ls_data_inferr-CREATED_BY     = sy-uname.
+        ls_data_inferr-CREATE_DATE    = sy-datum.
+        ls_data_inferr-CREATE_TIME    = sy-uzeit.
+        append ls_data_inferr to lt_data_inferr.
+        clear lv_fld_index_err.
+        lv_record_err_flg = 'X'.
+* Очищаем для послед обработки
+        clear ls_data.
+      ENDIF.
+    ELSE.
+      clear ls_id.
+      ls_id-identificationtype   = ls_data-TYPEDOC.
+      ls_id-zzafld000012         = ls_data-SERIALDOC.
+      ls_id-identificationnumber = ls_data-NUMBERDOC.
+      ls_id-zzafld000011         = ls_data-IDINSTITUTEDOC.
+      LS_ID-identrydate          = ls_data-IDENTRYDATE.
+      CALL FUNCTION 'Z_FM_BP_SIM_CHECK_DOCUMENT'
+        EXPORTING IS_ID    = LS_ID
+        IMPORTING ET_ERROR = p_sim_string_value.
+      if p_sim_string_value[] is not initial.
+        lv_curr_tab_idx               = 9.
+        lv_fld_index_err              = lv_curr_tab_idx.
+        read table p_sim_string_value into lv_error_txt index 1.
+        ls_data_inferr-CLIENT         = sy-mandt.
+        ls_data_inferr-EXTERNALID     = ls_data-EXTERNAL_ID.
+        ls_data_inferr-PROCESS_NUMBER = lv_olp_req_id.
+        ls_data_inferr-SYSTEMID       = LV_SYSTEMID.
+        ls_data_inferr-CSVROWNUM      = lv_curr_row_idx.
+        ls_data_inferr-ERROR_TXT      = lv_error_txt.
+        ls_data_inferr-ERROR_IDX      = lv_fld_index_err.
+        ls_data_inferr-ERROR_VAL      = ls_data-IDENTRYDATE.
+        ls_data_inferr-LOGICAL        = 0. " Форматный контроль
+        ls_data_inferr-FILENAME       = lv_filename.
+        ls_data_inferr-CREATED_BY     = sy-uname.
+        ls_data_inferr-CREATE_DATE    = sy-datum.
+        ls_data_inferr-CREATE_TIME    = sy-uzeit.
+        append ls_data_inferr to lt_data_inferr.
+        clear lv_fld_index_err.
+        lv_record_err_flg = 'X'.
+* Очищаем для послед обработки
+        clear ls_data.
+      endif.
+    ENDIF.
 * Проверяем флаг ошибки
     CHECK lv_record_err_flg NE 'X'.
 * Добавляем запись в таблицу документов которые предварительно проверены по формату
     append ls_data TO lt_data.
+* Очищаем для послед обработки
+    clear ls_data.
   endloop.
-
-
-*    ls_docdata_olp    type ZTB_DOCDATA_OLP,
-*    lt_docdata_olp    type standard table of ZTB_DOCDATA_OLP
+* Собираем список клиентов
   SORT lt_data BY EXTERNAL_ID ASCENDING.
   lv_EXTERNALID = ''.
   loop at lt_data into ls_data.
@@ -1518,8 +1584,6 @@ form load_csv_documents.
       ENDIF.
 * Проверка СНИЛС
       IF ls_docdata_olp-TYPEDOC EQ '83'.
-        DATA: LV_ID_NUMBER   TYPE BU_ID_NUMBER,
-              LV_RESULT_BOOL TYPE CHAR1.
         LV_ID_NUMBER = ls_docdata_olp-NUMBERDOC.
         replace all occurrences of '-' in LV_ID_NUMBER with space.
         CONDENSE LV_ID_NUMBER NO-GAPS.
@@ -1537,7 +1601,6 @@ form load_csv_documents.
         endif.
       ENDIF.
 * Проверка на дубль документа
-      DATA: LV_CHECK_MAINDOC TYPE CHAR1.
       CLEAR LV_CHECK_MAINDOC.
       READ TABLE lt_docdata_olp
         TRANSPORTING NO FIELDS
@@ -1567,7 +1630,6 @@ form load_csv_documents.
       append ls_docdata_olp to lt_docdata_olp.
 * Выставление флажка при необходимости
       IF LV_CHECK_MAINDOC NE 'X'.
-        DATA LV_COUNT_PASSPORT TYPE I.
         LV_COUNT_PASSPORT = 0.
         LOOP AT lt_docdata_olp assigning <fs_docdata_olp> where TYPEDOC EQ '21'.
           LV_COUNT_PASSPORT = LV_COUNT_PASSPORT + 1.
@@ -1721,9 +1783,10 @@ form load_csv_telephones.
     CHECK lv_record_err_flg NE 'X'.
 * Добавляем запись в таблицу телефонов которые предварительно проверены по формату
     append ls_data TO lt_data.
+* Очищаем для послед обработки
+    clear ls_data.
   endloop.
-*    ls_docdata_olp    type ZTB_DOCDATA_OLP,
-*    lt_docdata_olp    type standard table of ZTB_DOCDATA_OLP
+* Собираем список клиентов
   SORT lt_data BY EXTERNAL_ID ASCENDING.
   lv_EXTERNALID = ''.
   loop at lt_data into ls_data.
