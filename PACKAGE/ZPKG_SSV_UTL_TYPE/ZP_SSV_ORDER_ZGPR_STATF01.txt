@@ -1,0 +1,948 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZP_SSV_ORDER_ZGPR_STATF01
+*&---------------------------------------------------------------------*
+ranges:
+    gr_qdate   FOR BUT000-VALID_TO." ztb_order_zpk0-ACTUAL_TO.
+
+*&---------------------------------------------------------------------*
+*&      Form  PUT_AND_FILTER
+*&---------------------------------------------------------------------*
+*  Заполнение полей в отчете:  planned_from, planned_to, actual_from, actual_to, partner, partner_resp
+*  Фильтрация отчета по полям: actual_to, partner, partner_resp
+*----------------------------------------------------------------------*
+*  Автор: Севастьянов С.В.
+*  Дата:  27.02.2020
+*----------------------------------------------------------------------*
+FORM PUT_AND_FILTER USING LT_DATA  TYPE ZTAB_SSV_ORDER_ZGPR_REPORT.
+  field-symbols:
+        <fs_data>             TYPE zstr_ssv_order_zgpr_report.
+  data: lt_appointment        TYPE crmt_appointment_wrkt,
+        ls_appointment        TYPE crmt_appointment_wrk,
+        lt_partner_wrkt       TYPE crmt_partner_external_wrkt,
+        ls_partner_wrk        TYPE crmt_partner_external_wrk,
+        lt_header_guid        TYPE crmt_object_guid_tab,
+        ls_header_guid        TYPE crmt_object_guid,
+        lv_partner            TYPE BU_PARTNER.
+  clear lt_header_guid.
+  sort lt_data by ORDER_GUID.
+  loop at lt_data assigning <fs_data>.
+    ls_header_guid = <fs_data>-ORDER_GUID.
+    append ls_header_guid to lt_header_guid.
+  endloop.
+
+  CALL FUNCTION 'CRM_ORDER_READ'
+    EXPORTING
+      it_header_guid       = lt_header_guid
+    IMPORTING
+*      et_orderadm_h        = lt_orderadm_h
+*      et_status            = lt_status
+      et_appointment       = lt_appointment
+      et_partner           = lt_partner_wrkt
+*      et_activity_h        = lt_activity_h
+    EXCEPTIONS
+      document_not_found   = 1
+      error_occurred       = 2
+      document_locked      = 3
+      no_change_authority  = 4
+      no_display_authority = 5
+      no_change_allowed    = 6
+      others               = 7.
+* Фильтруем задачи по деловому партнеру ( Партнер по контакту, Контактное лицо )
+  loop at lt_partner_wrkt into ls_partner_wrk where partner_fct = '00000009' or partner_fct = '00000015'.
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+       EXPORTING
+         input  = ls_partner_wrk-partner_no
+       IMPORTING
+         output = lv_partner.
+    if not lv_partner in s_bp.
+      read table lt_data
+        WITH KEY ORDER_GUID = ls_partner_wrk-REF_GUID
+        transporting no fields.
+      if sy-subrc eq 0.
+        delete lt_data INDEX sy-tabix.
+      endif.
+    endif.
+  endloop.
+* Фильтруем задачи по ответственному партнеру ( Ответственный сотрудник )
+  loop at lt_partner_wrkt into ls_partner_wrk where partner_fct = '00000014' or partner_fct = '00000022'.
+    CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+       EXPORTING
+         input  = ls_partner_wrk-partner_no
+       IMPORTING
+         output = lv_partner.
+    if not lv_partner in s_resp.
+      read table lt_data
+        WITH KEY ORDER_GUID = ls_partner_wrk-REF_GUID
+        transporting no fields.
+      if sy-subrc eq 0.
+        delete lt_data INDEX sy-tabix.
+      endif.
+    endif.
+  endloop.
+* Фильтруем по дате актуальности задачи actual_to
+  loop at lt_appointment into ls_appointment where appt_type = 'ORDERACTUAL'.
+    if not ls_appointment-timestamp_to in gr_qdate.
+      read table lt_data
+        WITH KEY ORDER_GUID = ls_appointment-REF_GUID
+        transporting no fields.
+      if sy-subrc eq 0.
+        delete lt_data INDEX sy-tabix.
+      endif.
+    endif.
+  endloop.
+* Для оставшихся после фильтрации записей, заполняем поля: planned_from, planned_to, actual_from, actual_to, partner, partner_resp
+  loop at lt_data assigning <fs_data>.
+    read table lt_partner_wrkt
+      WITH KEY REF_GUID    = <fs_data>-ORDER_GUID
+               partner_fct = '00000009'
+          into ls_partner_wrk.
+    if sy-subrc eq 0.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+       EXPORTING
+         input  = ls_partner_wrk-partner_no
+       IMPORTING
+         output = <fs_data>-partner.
+    else.
+      read table lt_partner_wrkt
+      WITH KEY REF_GUID    = <fs_data>-ORDER_GUID
+               partner_fct = '00000015'
+          into ls_partner_wrk.
+      if sy-subrc eq 0.
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+          EXPORTING
+            input  = ls_partner_wrk-partner_no
+          IMPORTING
+            output = <fs_data>-partner.
+      endif.
+    endif.
+    read table lt_partner_wrkt
+      WITH KEY REF_GUID    = <fs_data>-ORDER_GUID
+               partner_fct = '00000014'
+          into ls_partner_wrk.
+    if sy-subrc eq 0.
+      CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+       EXPORTING
+         input  = ls_partner_wrk-partner_no
+       IMPORTING
+         output = <fs_data>-partner_resp.
+    else.
+      read table lt_partner_wrkt
+      WITH KEY REF_GUID    = <fs_data>-ORDER_GUID
+               partner_fct = '00000022'
+          into ls_partner_wrk.
+      if sy-subrc eq 0.
+        CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+          EXPORTING
+            input  = ls_partner_wrk-partner_no
+          IMPORTING
+            output = <fs_data>-partner_resp.
+      endif.
+    endif.
+    read table lt_appointment
+      WITH KEY REF_GUID    = <fs_data>-ORDER_GUID
+               appt_type   = 'ORDERPLANNED'
+          into ls_appointment.
+    if sy-subrc eq 0.
+      <fs_data>-planned_from = ls_appointment-timestamp_from.
+      <fs_data>-planned_to   = ls_appointment-timestamp_to.
+    endif.
+    read table lt_appointment
+      WITH KEY REF_GUID    = <fs_data>-ORDER_GUID
+               appt_type   = 'ORDERACTUAL'
+          into ls_appointment.
+    if sy-subrc eq 0.
+      <fs_data>-actual_from  = ls_appointment-timestamp_from.
+      <fs_data>-actual_to    = ls_appointment-timestamp_to.
+    endif.
+  endloop.
+ENDFORM.
+
+FORM GET_CATEGORY_TEXT USING    p_category      type CRMT_ACTIVITY_CATEGORY
+                       CHANGING p_category_text type C.
+  p_category_text = ''.
+  select single
+         DESCRIPTION
+    into p_category_text
+    from CRMC_ACT_CAT_T
+   where CATEGORY = p_category
+     and LANGU    = 'R'.
+ENDFORM.
+
+FORM GET_LAST_ACTION USING P_OBJECT_ID    TYPE CRMT_OBJECT_ID_DB
+                           P_PROCESS_TYPE TYPE CRMT_PROCESS_TYPE_DB
+                     CHANGING LAST_ACTION TYPE C.
+  data:
+        lr_result         TYPE REF TO if_bol_bo_col,
+        lr_col            type ref to IF_BOL_BO_COL,
+        lr_ent            TYPE REF TO cl_crm_bol_entity,
+        lr_adminh         TYPE REF TO cl_crm_bol_entity,
+        lr_advsact        TYPE REF TO cl_crm_bol_entity,
+        lr_core           TYPE REF TO cl_crm_bol_core,
+        lr_qs             TYPE REF TO cl_crm_bol_dquery_service,
+        lv_object_id      TYPE string,
+        lv_process_type   TYPE string.
+  LAST_ACTION = '<Не было действий>'.
+  MOVE P_OBJECT_ID    TO lv_object_id.
+  MOVE P_PROCESS_TYPE TO lv_process_type.
+* Находим последнее действие через BOL
+    lr_core = cl_crm_bol_core=>get_instance( ).
+    lr_core->start_up( 'ZURFU_GPR_TASK' ).
+    lr_qs = cl_crm_bol_dquery_service=>get_instance( iv_query_name = 'BTQAct' )." Загружаем GENIL компонент
+    lr_qs->add_selection_param( iv_attr_name = 'OBJECT_ID'    iv_sign = 'I' iv_option = 'EQ' iv_low = lv_object_id ).
+    lr_qs->add_selection_param( iv_attr_name = 'PROCESS_TYPE' iv_sign = 'I' iv_option = 'EQ' iv_low = lv_process_type ).
+
+    lr_result ?= lr_qs->get_query_result( ). " Выбираем данные согласно запроса
+    check lr_result is bound.
+    lr_ent ?= lr_result->get_first( ).
+    check lr_ent is bound.
+try.
+* get BTADVSAct
+    lr_advsact = lr_ent->get_related_entity( 'BTADVSAct' ).
+* get BTAdminH
+    lr_adminh  = lr_advsact->get_related_entity( 'BTOrderHeader' ).
+* get BTDatesSet
+    lr_ent     = lr_adminh->get_related_entity( 'BTHeaderAction' ).
+    lr_col     = lr_ent->get_related_entities( iv_relation_name = 'ACIActiveProcessedActionRel'
+                                               iv_mode          = 'b'  ).
+    if lr_col is bound.
+      lr_col->SORT( iv_attr_name = 'TIMECREATE' iv_sort_order = 'D' ).
+      lr_col->SORT( iv_attr_name = 'DATECREATE' iv_sort_order = 'D' iv_stable = abap_true ).
+      lr_ent ?= lr_col->get_first( ).
+      if lr_ent is bound.
+        LAST_ACTION = lr_ent->get_property_as_string( 'TTYPEDESCR' ).
+      endif.
+    endif.
+catch cx_root.
+cleanup.
+   LAST_ACTION = ''.
+endtry.
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  LOAD_DATA
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*  -->  p1        text
+*  <--  p2        text
+*----------------------------------------------------------------------*
+FORM LOAD_DATA .
+  ranges:
+    lr_cdate   FOR crmd_orderadm_h-created_at.
+
+  types:
+    begin of t_partner,
+      partner  TYPE bu_partner,
+      name     TYPE zed_udl_fio,
+      augrp    type bu_augrp ," -->><< 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+    end of t_partner,
+    begin of t_binary,
+      binary_field  TYPE so_raw255,
+    end of t_binary.
+
+  data:
+    lt_data    TYPE TABLE OF zstr_ssv_order_zgpr_report,
+    lt_partner TYPE TABLE OF t_partner,
+    ls_partner TYPE t_partner,
+    ls_but000  TYPE but000,
+    ls_layout  TYPE slis_layout_alv,
+    lv_stsma   TYPE J_STSMA.
+
+  data:
+    lv_perall     TYPE i,
+    lv_percur     TYPE i,
+    lv_pershw     TYPE i,
+    lv_pertmp     TYPE i,
+    lv_number     TYPE i,
+    lv_text70     TYPE text70,
+    lv_message    TYPE text70.
+
+  field-symbols:
+    <fs_data>  TYPE zstr_ssv_order_zgpr_report.
+
+  data:
+    lv_data   TYPE datum,
+    lv_time   TYPE tims.
+
+  loop at s_qdate.
+    gr_qdate-sign   = s_qdate-sign.
+    gr_qdate-option = s_qdate-option.
+    case s_qdate-option.
+      when 'EQ'.
+        gr_qdate-option = 'BT'.
+        s_qdate-high = s_qdate-low.
+      when 'NE'.
+        gr_qdate-sign   = 'E'.
+        gr_qdate-option = 'BT'.
+        s_qdate-high = s_qdate-low.
+      when others.
+    endcase.
+    if s_qdate-low is not initial or s_qdate-low <> '00000000'.
+       lv_data = s_qdate-low.
+       CALL FUNCTION 'Z_FM_SIM_GET_DIFF_TIME'
+         EXPORTING
+           iv_data = lv_data
+         IMPORTING
+           ev_time = lv_time.
+       convert date s_qdate-low
+               time lv_time " Из-за разницы с сервером надо прибавить 6 часов
+         into time stamp gr_qdate-low time zone sy-zonlo.
+       if s_qdate-option = 'LE' or s_qdate-option = 'GT'.
+           CALL METHOD cl_abap_tstmp=>add
+             EXPORTING
+               tstmp     = gr_qdate-low
+               secs      = 86399 " Чтобы получить 23:59:59
+             RECEIVING
+               r_tstmp   = gr_qdate-low.
+       endif.
+    endif.
+    if s_qdate-high is not initial or s_qdate-high <> '00000000'.
+       lv_data = s_qdate-high.
+       CALL FUNCTION 'Z_FM_SIM_GET_DIFF_TIME'
+         EXPORTING
+           iv_data = lv_data
+         IMPORTING
+           ev_time = lv_time.
+       convert date s_qdate-high
+               time lv_time " Из-за разницы с сервером надо прибавить 6 часов
+         into time stamp gr_qdate-high time zone sy-zonlo.
+       CALL METHOD cl_abap_tstmp=>add
+         EXPORTING
+           tstmp     = gr_qdate-high
+           secs      = 86399 " Чтобы получить 23:59:59
+         RECEIVING
+           r_tstmp   = gr_qdate-high.
+    endif.
+    if gr_qdate-low is not initial.
+       append gr_qdate.
+    endif.
+  endloop.
+
+  loop at s_cdate.
+    lr_cdate-sign   = s_cdate-sign.
+    lr_cdate-option = s_cdate-option.
+    case s_cdate-option.
+      when 'EQ'.
+        lr_cdate-option = 'BT'.
+        s_cdate-high = s_cdate-low.
+      when 'NE'.
+        lr_cdate-sign   = 'E'.
+        lr_cdate-option = 'BT'.
+        s_cdate-high = s_cdate-low.
+      when others.
+    endcase.
+    if s_cdate-low is not initial or s_cdate-low <> '00000000'.
+       lv_data = s_cdate-low.
+       CALL FUNCTION 'Z_FM_SIM_GET_DIFF_TIME'
+         EXPORTING
+           iv_data = lv_data
+         IMPORTING
+           ev_time = lv_time.
+       convert date s_cdate-low
+               time lv_time " Из-за разницы с сервером надо прибавить 6 часов
+         into time stamp lr_cdate-low time zone sy-zonlo.
+       if s_cdate-option = 'LE' or s_cdate-option = 'GT'.
+           CALL METHOD cl_abap_tstmp=>add
+             EXPORTING
+               tstmp     = lr_cdate-low
+               secs      = 86399 " Чтобы получить 23:59:59
+             RECEIVING
+               r_tstmp   = lr_cdate-low.
+       endif.
+    endif.
+    if s_cdate-high is not initial or s_cdate-high <> '00000000'.
+       lv_data = s_cdate-high.
+       CALL FUNCTION 'Z_FM_SIM_GET_DIFF_TIME'
+         EXPORTING
+           iv_data = lv_data
+         IMPORTING
+           ev_time = lv_time.
+       convert date s_cdate-high
+               time lv_time " Из-за разницы с сервером надо прибавить 6 часов
+         into time stamp lr_cdate-high time zone sy-zonlo.
+       CALL METHOD cl_abap_tstmp=>add
+         EXPORTING
+           tstmp     = lr_cdate-high
+           secs      = 86399 " Чтобы получить 23:59:59
+         RECEIVING
+           r_tstmp   = lr_cdate-high.
+    endif.
+    if lr_cdate-low is not initial.
+       append lr_cdate.
+    endif.
+  endloop.
+
+  select  a~order_guid
+          h~object_id
+          h~process_type
+          h~created_at
+          c~extern_act_id
+          c~completion
+          c~act_location
+*          ~planned_from
+*          ~planned_to
+*          ~actual_from
+*          ~actual_to
+           s~STAT as estat
+*          ~partner
+*          ~partner_resp
+           a~LAWSUITSUMM
+           a~DUTYSUMM
+           a~SENT2COURT
+           a~SENT2UD
+           a~ISHNUM
+           a~RETDUTY
+           a~STOPDATE
+           a~OBESP
+           a~REJOB
+           a~VSTR
+           a~WAERS
+           a~BUHDATE
+           a~REQ_DATE
+           c~CATEGORY
+    into corresponding fields of table lt_data
+      up to 250000 rows
+    from ZUBRR_GPRBLOCK as a
+      inner join crmd_orderadm_h as h on a~client       = h~client
+                                     and a~order_guid   = h~guid
+      inner join crmd_activity_h as c on a~client       = c~client
+                                     and a~order_guid   = c~guid
+      inner join crm_jest        as s on s~OBJNR        = a~order_guid
+  where h~process_type    = p_otype
+    and s~stat            in p_stat
+    and s~inact           ne 'X'
+    and s~stat          like 'E%'
+*    and a~actual_to       in lr_qdate
+    and h~created_at      in lr_cdate
+    and h~object_id       in s_objid
+    and c~extern_act_id   in s_actid
+*    and a~partner         in s_bp
+*    and a~partner_resp    in s_resp
+    .
+*******************************************************************************************************
+* Form PUT_AND_FILTER                                                                                 *
+* Заполнение полей в отчете: planned_from, planned_to, actual_from, actual_to, partner, partner_resp  *
+* Фильтрация отчета по полям: actual_to, partner, partner_resp                                        *
+*******************************************************************************************************
+  perform PUT_AND_FILTER using lt_data.
+*
+  if gt_status[] is initial.
+     SELECT single
+            user_stat_proc
+       into lv_stsma
+       FROM crmc_proc_type
+      WHERE process_type = p_otype. " 'ZGPR'.
+
+     select estat as type
+            txt30 as text
+       into table gt_status
+       from tj30t
+     where stsma = lv_stsma
+       and spras = 'R'.
+     sort gt_status by type.
+     delete adjacent duplicates from gt_status.
+  endif.
+
+  clear: lv_percur, lv_pershw, lv_pertmp, lv_text70.
+  DESCRIBE TABLE lt_data LINES lv_perall.
+  lv_text70 = lv_perall.
+
+  loop at lt_data assigning <fs_data>.
+    ADD 1 TO lv_percur.
+    read table gt_status into ls_value
+      with key type = <fs_data>-estat
+      binary search.
+    if sy-subrc is initial.
+       <fs_data>-estat_text = ls_value-text.
+    endif.
+    read table lt_partner into ls_partner
+      with key partner = <fs_data>-partner
+      binary search.
+    " 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+    " добавил поле augrp
+    if sy-subrc is not initial.
+       clear ls_but000.
+       select single type
+                     zzafld000019
+                     name_last
+                     name_first
+                     namemiddle
+                     augrp
+         into corresponding fields of ls_but000
+         from but000
+       where partner = <fs_data>-partner.
+       case ls_but000-type.
+       	 when '1'.
+           ls_partner-partner = <fs_data>-partner.
+           ls_partner-augrp =  ls_but000-augrp." -->><< 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+           concatenate ls_but000-name_last
+                       ls_but000-name_first
+                       ls_but000-namemiddle
+             into ls_partner-name separated by space.
+       	 when others.
+           ls_partner-partner = <fs_data>-partner.
+           ls_partner-name = ls_but000-zzafld000019.
+           ls_partner-augrp =  ls_but000-augrp." -->><< 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+       endcase.
+       insert ls_partner into lt_partner index sy-tabix.
+    endif.
+    <fs_data>-partner_text = ls_partner-name.
+    " -->> 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+    " Заполняем поле принадлежности
+    <fs_data>-PARTNER_AUGRP = ls_partner-augrp.
+    " --<< 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+    read table lt_partner into ls_partner
+      with key partner = <fs_data>-partner_resp
+      binary search.
+    if sy-subrc is not initial.
+       clear ls_but000.
+       select single type
+                     zzafld000019
+                     name_last
+                     name_first
+                     namemiddle
+                     augrp
+         into corresponding fields of ls_but000
+         from but000
+       where partner = <fs_data>-partner_resp.
+       case ls_but000-type.
+       	 when '1'.
+           ls_partner-partner = <fs_data>-partner_resp.
+           ls_partner-augrp =  ls_but000-augrp." -->><< 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+           concatenate ls_but000-name_last
+                       ls_but000-name_first
+                       ls_but000-namemiddle
+             into ls_partner-name separated by space.
+       	 when others.
+           ls_partner-partner = <fs_data>-partner_resp.
+           ls_partner-name = ls_but000-zzafld000019.
+           ls_partner-augrp =  ls_but000-augrp." -->><< 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+       endcase.
+       insert ls_partner into lt_partner index sy-tabix.
+    endif.
+    <fs_data>-partner_resp_text = ls_partner-name.
+
+    convert time stamp <fs_data>-created_at
+      time zone sy-zonlo
+      into date <fs_data>-created_date.
+    convert time stamp <fs_data>-planned_from
+      time zone sy-zonlo
+      into date <fs_data>-planned_from_date.
+    convert time stamp <fs_data>-planned_to
+      time zone sy-zonlo
+      into date <fs_data>-planned_to_date.
+    convert time stamp <fs_data>-actual_from
+      time zone sy-zonlo
+      into date <fs_data>-actual_from_date.
+    convert time stamp <fs_data>-actual_to
+      time zone sy-zonlo
+      into date <fs_data>-actual_to_date.
+
+    if p_send = 'X'.
+        if <fs_data>-created_at is not initial.
+           CALL METHOD cl_abap_tstmp=>add
+             EXPORTING
+               tstmp     = <fs_data>-created_at
+               secs      = 21600
+             RECEIVING
+               r_tstmp   = <fs_data>-created_at.
+        endif.
+        if <fs_data>-planned_from is not initial.
+           CALL METHOD cl_abap_tstmp=>add
+             EXPORTING
+               tstmp     = <fs_data>-planned_from
+               secs      = 21600
+             RECEIVING
+               r_tstmp   = <fs_data>-planned_from.
+        endif.
+        if <fs_data>-planned_to is not initial.
+           CALL METHOD cl_abap_tstmp=>add
+             EXPORTING
+               tstmp     = <fs_data>-planned_to
+               secs      = 21600
+             RECEIVING
+               r_tstmp   = <fs_data>-planned_to.
+        endif.
+        if <fs_data>-actual_from is not initial.
+           CALL METHOD cl_abap_tstmp=>add
+             EXPORTING
+               tstmp     = <fs_data>-actual_from
+               secs      = 21600
+             RECEIVING
+               r_tstmp   = <fs_data>-actual_from.
+        endif.
+        if <fs_data>-actual_to is not initial.
+           CALL METHOD cl_abap_tstmp=>add
+             EXPORTING
+               tstmp     = <fs_data>-actual_to
+               secs      = 21600
+             RECEIVING
+               r_tstmp   = <fs_data>-actual_to.
+        endif.
+    endif.
+
+    lv_message = lv_percur.
+    concatenate 'Выборка данных:'
+                lv_message
+                'из'
+                lv_text70
+      into lv_message separated by space.
+    perform run_scale using lv_perall lv_percur lv_message
+                   changing lv_pershw lv_pertmp.
+  endloop.
+
+  data:
+    lv_text               TYPE string,
+    l_len                 TYPE i,
+    lv_text_total         TYPE string,
+    lt_attch_text         TYPE soli_tab,
+    ls_attch_text         TYPE soli,
+    lv_login_str          TYPE string,
+    lv_last_action(75)    TYPE c,
+    lv_category_text(75)  TYPE c,
+    lv_data_tmp1(20)      TYPE c,
+    lv_data_tmp2(20)      TYPE c,
+    lv_data_tmp3(20)      TYPE c,
+    lv_data_tmp4(20)      TYPE c,
+    lv_data_tmp5(20)      TYPE c,
+    lv_data_tmp06(10)     TYPE c,
+    lv_data_tmp07(10)     TYPE c,
+    lv_data_tmp08(10)     TYPE c,
+    lv_data_tmp09(10)     TYPE c,
+    lv_data_tmp10(10)     TYPE c.
+
+  data:
+    lv_string             TYPE string,
+    lv_subject            TYPE so_obj_des,
+    lr_document           TYPE REF TO cl_document_bcs,
+    lr_send_request       TYPE REF TO cl_bcs,
+    lr_zipper             TYPE REF TO cl_abap_zip,
+    lt_text               TYPE soli_tab,
+    ls_text_line          TYPE soli,
+    ls_text               TYPE string,
+    lv_email              TYPE ad_smtpadr,
+    lr_sender             TYPE REF TO if_sender_bcs,
+    lr_recipient          TYPE REF TO if_recipient_bcs,
+    lt_binary             TYPE TABLE OF t_binary,
+    lv_xstring            TYPE xstring,
+    lt_email              TYPE TABLE OF string,
+    lv_mail_str           TYPE string.
+
+  if p_send = 'X'.
+    clear:lv_text_total.
+    concatenate     ''
+                    'Номер задачи'                    ';' "
+                    'Дата создания'                   ';' "
+                    'Начальная дата'                  ';' "
+                    'Конечная дата'                   ';' "
+                    'Внешний номер'                   ';' "
+                    'Местоположение'                  ';' "
+                    'Статус'                          ';' "
+                    'Последнее действие'              ';' "
+                    'ДП заёмщика'                     ';' "
+*                    'Дата создания задачи'            ';' "
+*                    'Плановый срок С'                 ';' "
+*                    'Плановый срок По'                ';' "
+*                    'Фактический срок С'              ';' "
+*                    'Фактический срок По'             ';' "
+*                    'Фактический срок С (дата)'       ';' "
+*                    'Фактический срок По (дата)'      ';' "
+*                    'Статус задачи'                   ';' "
+*                    'Исполнение'                      ';' "
+                    'ДП ответственного сотрудника'    ';' "
+*                    'ФИО делового партнера'           ';' "
+                    'ФИО ответственного сотрудника'   ';' "
+                    'Способ подачи иска'              ';' "
+                    'Канал сбыта'                     ';' " " -->><< 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+                    cl_abap_char_utilities=>newline
+      into lv_text.
+    concatenate lv_text_total lv_text
+      into lv_text_total.
+    clear: lv_text.
+    loop at lt_data assigning <fs_data>.
+      clear: lv_data_tmp1, lv_data_tmp2, lv_data_tmp3,
+             lv_data_tmp4, lv_data_tmp5, lv_data_tmp06,
+             lv_data_tmp07, lv_data_tmp08,
+             lv_data_tmp09, lv_data_tmp10.
+*      write <fs_data>-created_at        to lv_data_tmp1 time zone sy-zonlo.
+*      write <fs_data>-planned_from      to lv_data_tmp2 time zone sy-zonlo.
+*      write <fs_data>-planned_to        to lv_data_tmp3 time zone sy-zonlo.
+*      write <fs_data>-actual_from       to lv_data_tmp4 time zone sy-zonlo.
+*      write <fs_data>-actual_to         to lv_data_tmp5 time zone sy-zonlo.
+      if <fs_data>-created_date is not initial or
+         <fs_data>-created_date <> '00000000'.
+         write <fs_data>-created_date      to lv_data_tmp06.
+      endif.
+      if <fs_data>-planned_from_date is not initial or
+         <fs_data>-planned_from_date <> '00000000'.
+         write <fs_data>-planned_from_date to lv_data_tmp07.
+      endif.
+      if <fs_data>-planned_to_date is not initial or
+         <fs_data>-planned_to_date <> '00000000'.
+         write <fs_data>-planned_to_date   to lv_data_tmp08.
+      endif.
+      if <fs_data>-actual_from_date is not initial or
+         <fs_data>-actual_from_date <> '00000000'.
+         write <fs_data>-actual_from_date  to lv_data_tmp09.
+      endif.
+      if <fs_data>-actual_to_date is not initial or
+         <fs_data>-actual_to_date <> '00000000'.
+         write <fs_data>-actual_to_date    to lv_data_tmp10.
+      endif.
+
+      perform GET_LAST_ACTION using      <fs_data>-OBJECT_ID
+                                         'ZGPR'
+                              changing   lv_last_action.
+      perform GET_CATEGORY_TEXT using    <fs_data>-category
+                                changing lv_category_text.
+
+      concatenate ''
+                  <fs_data>-object_id           ';' " Номер задачи
+                  lv_data_tmp06                 ';' " Дата создания
+                  lv_data_tmp07                 ';' " Начальная дата
+                  lv_data_tmp08                 ';' " Конечная дата
+                  <fs_data>-extern_act_id       ';' " Внешний номер
+                  <fs_data>-act_location        ';' " Местоположение
+                  <fs_data>-estat_text          ';' " Статус
+                  lv_last_action                ';' " Последнее действие
+                  <fs_data>-partner             ';'
+*                  lv_data_tmp1                  ';'
+*                  lv_data_tmp2                  ';'
+*                  lv_data_tmp3                  ';'
+*                  lv_data_tmp4                  ';'
+*                  lv_data_tmp5                  ';'
+*                  lv_data_tmp09                 ';'
+*                  lv_data_tmp10                 ';'
+*                  <fs_data>-estat               ';'
+*                  <fs_data>-completion          ';'
+                  <fs_data>-partner_resp        ';'
+*                  <fs_data>-partner_text        ';'
+                  <fs_data>-partner_resp_text   ';'
+                  lv_category_text              ';'
+                  <fs_data>-PARTNER_AUGRP       ';' "-->><< 17.05.2016 Шестаков А.Н. #28253 [16-1808.2.8.2.2.2] ВУЗ-банк: TWCMS_Дорабо
+                  cl_abap_char_utilities=>newline
+        into lv_text.
+      concatenate lv_text_total lv_text
+        into lv_text_total.
+    endloop.
+    lv_subject = 'Выгрузка задач из CRMD_ORDER типа ZGPR'.
+
+    concatenate
+               '<html><head>'
+               '<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />'
+               '</head><body>'
+               'Вид бизнес-операции= '          p_otype '<br />'
+               'Статус= '                       p_stat  '<br />'
+               'Дата закрытия= '                s_qdate-low+6(2) '.' s_qdate-low+4(2) '.' s_qdate-low(4) '-'
+                                                s_qdate-high+6(2) '.' s_qdate-high+4(2) '.' s_qdate-high(4)  '<br />'
+
+               '</body></html>'
+    into ls_text.
+    "дробим текст письма на строки и складываем во внутреннею таблицй
+    DO.
+      ls_text_line = ls_text.
+      APPEND ls_text_line TO lt_text.
+      SHIFT ls_text BY 255 PLACES.
+      l_len = STRLEN( ls_text ).
+      IF l_len < 255.
+        ls_text_line = ls_text.
+        APPEND ls_text_line TO lt_text.
+        EXIT.
+      ENDIF.
+    ENDDO.
+
+    TRY.
+      lr_document = cl_document_bcs=>create_document( i_type       = 'HTM'
+                                                      i_text       = lt_text
+                                                      i_subject    = lv_subject
+                                                      i_importance = '1' ).
+    CATCH cx_document_bcs.
+    ENDTRY.
+    TRY.
+      CALL FUNCTION 'SCMS_STRING_TO_XSTRING'
+        EXPORTING
+          text     = lv_text_total
+          encoding = '1504'
+        IMPORTING
+          buffer = lv_xstring.
+      CREATE OBJECT lr_zipper.
+      lv_string = 'zp_ssv_order_zgpr.csv'.
+      CALL METHOD lr_zipper->add
+        EXPORTING
+          name    = lv_string
+          content = lv_xstring.
+      CALL METHOD lr_zipper->save
+        RECEIVING
+          zip = lv_xstring.
+      CALL FUNCTION 'SCMS_XSTRING_TO_BINARY'
+        EXPORTING
+          buffer     = lv_xstring
+        TABLES
+          binary_tab = lt_binary.
+      CALL METHOD lr_document->add_attachment
+        EXPORTING
+          i_attachment_type    = 'BIN'
+          i_attachment_subject = 'zp_ssv_order_zgpr.zip'
+          i_att_content_hex	   = lt_binary.
+    CATCH cx_document_bcs.
+    ENDTRY.
+    TRY.
+      lr_send_request = cl_bcs=>create_persistent( ).
+      lr_send_request->set_document( lr_document ).
+    CATCH cx_send_req_bcs.
+    ENDTRY.
+    TRY.
+      lv_email = 'bank@ubrr.ru'.
+      lr_sender = cl_cam_address_bcs=>create_internet_address( lv_email ).
+      refresh lt_email.
+      split p_mail at ';' into table lt_email[].
+      if lines( lt_email[] ) = 0.
+         lv_email = p_mail.
+         lr_recipient = cl_cam_address_bcs=>create_internet_address( lv_email ).
+         lr_send_request->add_recipient( i_recipient = lr_recipient ).
+      else.
+         loop at lt_email into lv_mail_str.
+           replace all occurrences of ';' in lv_mail_str with ''.
+           lv_email = lv_mail_str.
+           lr_recipient = cl_cam_address_bcs=>create_internet_address( lv_email ).
+           lr_send_request->add_recipient( i_recipient = lr_recipient ).
+         endloop.
+      endif.
+    CATCH cx_address_bcs.
+    ENDTRY.
+    TRY.
+      lr_send_request->set_sender( lr_sender ).
+    CATCH cx_send_req_bcs.
+    ENDTRY.
+    TRY.
+      lr_send_request->set_send_immediately( 'X' ).
+      lr_send_request->send( ).
+    CATCH cx_send_req_bcs.
+    ENDTRY.
+    commit work and wait.
+    write: / 'Письмо с файлом отчета направлено по адресу:', p_mail.
+
+  else.
+    ls_layout-zebra             = 'X'.
+    ls_layout-colwidth_optimize = 'X'.
+    perform set_fieldcat changing lt_fieldcat.
+
+    CALL FUNCTION 'REUSE_ALV_GRID_DISPLAY'
+      EXPORTING
+        i_callback_program      = sy-repid
+        it_fieldcat             = lt_fieldcat
+        is_layout               = ls_layout
+        i_save                  = 'A'
+      TABLES
+         t_outtab                = lt_data.
+  endif.
+
+ENDFORM.                    " LOAD_DATA
+*&---------------------------------------------------------------------*
+*&      Form  SET_FIELDCAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      <--P_LT_FIELDCAT  text
+*----------------------------------------------------------------------*
+FORM SET_FIELDCAT   CHANGING pt_fieldcat TYPE slis_t_fieldcat_alv.
+
+  field-symbols
+    <fs_fcat>         TYPE slis_fieldcat_alv.
+
+  CALL FUNCTION 'REUSE_ALV_FIELDCATALOG_MERGE'
+    EXPORTING
+      i_structure_name  = 'ZSTR_SSV_ORDER_ZGPR_REPORT'
+    CHANGING
+      ct_fieldcat       = pt_fieldcat
+    EXCEPTIONS
+      inconsistent_interface = 1
+      program_error          = 2
+      others                 = 3.
+
+  loop at pt_fieldcat assigning <fs_fcat>.
+    case <fs_fcat>-fieldname.
+      when 'PLANNED_FROM'.
+        <fs_fcat>-seltext_s = 'Плановый срок С'.
+        <fs_fcat>-seltext_m = 'Плановый срок С'.
+        <fs_fcat>-seltext_l = 'Плановый срок С'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'PLANNED_TO'.
+        <fs_fcat>-seltext_s = 'Плановый срок По'.
+        <fs_fcat>-seltext_m = 'Плановый срок По'.
+        <fs_fcat>-seltext_l = 'Плановый срок По'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'ACTUAL_FROM'.
+        <fs_fcat>-seltext_s = 'Фактический срок С'.
+        <fs_fcat>-seltext_m = 'Фактический срок С'.
+        <fs_fcat>-seltext_l = 'Фактический срок С'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'ACTUAL_TO'.
+        <fs_fcat>-seltext_s = 'Фактический срок По'.
+        <fs_fcat>-seltext_m = 'Фактический срок По'.
+        <fs_fcat>-seltext_l = 'Фактический срок По'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'CREATED_DATE'.
+        <fs_fcat>-seltext_s = 'Дата создания (дата)'.
+        <fs_fcat>-seltext_m = 'Дата создания (дата)'.
+        <fs_fcat>-seltext_l = 'Дата создания (дата)'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'PLANNED_FROM_DATE'.
+        <fs_fcat>-seltext_s = 'Плановый срок С (дата)'.
+        <fs_fcat>-seltext_m = 'Плановый срок С (дата)'.
+        <fs_fcat>-seltext_l = 'Плановый срок С (дата)'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'PLANNED_TO_DATE'.
+        <fs_fcat>-seltext_s = 'Плановый срок По (дата)'.
+        <fs_fcat>-seltext_m = 'Плановый срок По (дата)'.
+        <fs_fcat>-seltext_l = 'Плановый срок По (дата)'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'ACTUAL_FROM_DATE'.
+        <fs_fcat>-seltext_s = 'Фактический срок С (дата)'.
+        <fs_fcat>-seltext_m = 'Фактический срок С (дата)'.
+        <fs_fcat>-seltext_l = 'Фактический срок С (дата)'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'ACTUAL_TO_DATE'.
+        <fs_fcat>-seltext_s = 'Фактический срок По (дата)'.
+        <fs_fcat>-seltext_m = 'Фактический срок По (дата)'.
+        <fs_fcat>-seltext_l = 'Фактический срок По (дата)'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'PARTNER_RESP'.
+        <fs_fcat>-seltext_s = 'Ответственный сотрудник'.
+        <fs_fcat>-seltext_m = 'Ответственный сотрудник'.
+        <fs_fcat>-seltext_l = 'Ответственный сотрудник'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'EXTERN_ACT_ID'.
+        <fs_fcat>-seltext_s = 'Номер договора'.
+        <fs_fcat>-seltext_m = 'Номер договора'.
+        <fs_fcat>-seltext_l = 'Номер договора'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'PARTNER_TEXT'.
+        <fs_fcat>-seltext_s = 'ФИО делового партнера'.
+        <fs_fcat>-seltext_m = 'ФИО делового партнера'.
+        <fs_fcat>-seltext_l = 'ФИО делового партнера'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+      when 'PARTNER_RESP_TEXT'.
+        <fs_fcat>-seltext_s = 'ФИО ответственного сотрудника'.
+        <fs_fcat>-seltext_m = 'ФИО ответственного сотрудника'.
+        <fs_fcat>-seltext_l = 'ФИО ответственного сотрудника'.
+        <fs_fcat>-reptext_ddic = <fs_fcat>-seltext_l.
+    endcase.
+  endloop.
+ENDFORM.                    " SET_FIELDCAT
+FORM run_scale USING    p_percentall TYPE i
+                        p_percentcur TYPE i
+                        p_text       TYPE text70
+               CHANGING p_percentshw TYPE i
+                        p_percenttmp TYPE i.
+    p_percenttmp = ( ( p_percentcur * 100 / p_percentall ) / 5 ) * 5.
+    IF p_percentshw NE p_percenttmp.
+        p_percentshw = p_percenttmp.
+        IF p_percentshw <= 100.
+        CALL FUNCTION 'SAPGUI_PROGRESS_INDICATOR'
+            EXPORTING
+                percentage = p_percentshw
+                text       = p_text.
+        ENDIF.
+    ENDIF.
+ENDFORM.

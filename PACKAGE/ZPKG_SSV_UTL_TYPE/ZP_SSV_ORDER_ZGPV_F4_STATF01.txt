@@ -1,0 +1,49 @@
+*----------------------------------------------------------------------*
+***INCLUDE ZP_SSV_ORDER_ZGPV_F4_STATF01 .
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Form  F4_STAT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+*      -->P_P_OTYPE  text
+*----------------------------------------------------------------------*
+FORM F4_STAT USING p_process_type type CRMT_PROCESS_TYPE.
+  data:
+    lt_return     type table of ddshretval,
+    ls_return     type ddshretval,
+    lt_value      like table of ls_value,
+    lt_mapping    type table of dselc,
+    lv_stsma      type J_STSMA,
+    ls_mapping    type dselc.
+
+  refresh lt_value.
+
+  SELECT single
+         user_stat_proc
+    into lv_stsma
+    FROM crmc_proc_type
+   WHERE process_type = p_process_type.
+
+  select estat as type
+         txt30 as text
+    into table lt_value
+    from tj30t
+  where stsma = lv_stsma
+    and spras = 'R'.
+
+  sort lt_value by type.
+  delete adjacent duplicates from lt_value.
+  gt_status[] = lt_value[].
+*Укажем поля значение которых нам нужно вернуть из средства поиска
+  call function 'F4IF_INT_TABLE_VALUE_REQUEST'
+    exporting
+      retfield        = 'TYPE'
+      value_org       = 'S'
+      dynpnr          = sy-dynnr
+      dynpprog        = sy-cprog
+      dynprofield     = 'P_STAT-LOW'
+    tables
+      value_tab       = lt_value
+      return_tab      = lt_return.
+ENDFORM.                    " F4_STAT

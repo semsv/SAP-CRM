@@ -1,0 +1,16 @@
+*&---------------------------------------------------------------------*
+*& Report  ZP_SSV_ORDER_ZGPR
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+
+INCLUDE ZP_SSV_ORDER_ZGPR_TOP                   .    " global Data
+
+* INCLUDE ZP_SSV_ORDER_ZGPR_O01                   .  " PBO-Modules
+* INCLUDE ZP_SSV_ORDER_ZGPR_I01                   .  " PAI-Modules
+* INCLUDE ZP_SSV_ORDER_ZGPR_F01                   .  " FORM-Routines
+
+INCLUDE ZP_SSV_ORDER_ZGPR_STATF01.
+INCLUDE ZP_SSV_ORDER_ZGPR_F4_STATF01.
