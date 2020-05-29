@@ -1,0 +1,1382 @@
+*&---------------------------------------------------------------------*
+*& Include ZI_WF_INT_SKIP_RTDM_TOP                           Report ZRP*
+*&                                                                     *
+*&---------------------------------------------------------------------*
+
+REPORT   ZRP_WF_INT_SKIP_RTDM                                        .
+
+TYPE-POOLS: vrm.
+
+class lcl_events_d0100 definition deferred.
+
+types: begin of g_ty_s_scr_opt,
+         edit_mode         type i,
+       end of g_ty_s_scr_opt.
+
+DATA:
+  gr_container_d0100   type ref to cl_gui_custom_container
+  ,gr_grid_d0100       type ref to cl_gui_alv_grid
+  ,gr_events_d0100     type ref to lcl_events_d0100
+  ,gv_next_screen      type i
+  ,gv_dialog_handle    type balloghndl
+  ,GT_INDEX_ROWS       type LVC_T_ROW
+  ,GT_ROW_NO           type LVC_T_ROID
+  ,gr_dialog           type ref to CL_GUI_DIALOGBOX_CONTAINER
+  ,gs_screen_option    type g_ty_s_scr_opt
+  ,gv_show_warning     type char1 value 'X'
+  ,gv_change_all_skip  type char1 value 'X'
+  ,gv_role_exists      type char1 value ' '
+  ,gv_err_logic        type ABAP_BOOL    " Для логирования ошибок
+  ,gt_fcat             type lvc_t_fcat.  " Для настройки полей
+
+field-symbols: <fs_main_out_tab> type ZSTR_WF_SKIP_RTDM_REP.
+data:
+   gt_main_out_tab      type standard table of ZSTR_WF_SKIP_RTDM_REP  " Таблица основных данных
+  ,gt_main_out_tab_cmp  type standard table of ZSTR_WF_SKIP_RTDM_REP. " Таблица для сравнения
+
+constants: con_true              type char1     value 'X',
+           con_exit              type sy-ucomm  value 'ВЫХОД',
+           con_canc              type sy-ucomm  value 'ОТМЕНА',
+           con_back              type sy-ucomm  value 'НАЗАД',
+           con_save              type sy-ucomm  value 'СОХРАНИТЬ',
+           con_str               type lvc_fname value 'ZSTR_WF_SKIP_RTDM_REP',
+           con_on                type char1     value '1',
+           con_off               type char1     value '0',
+           grid_mode_display     type i         value 0,
+           grid_mode_change      type i         value 1,
+           con_edit_mode_display type i         value 1,
+           con_edit_mode_change  type i         value 2.
+
+data: g_okcode type sy-ucomm.
+
+TABLES:
+  ZTB_WF_SKIP_RTDM.
+*---------------------------------------------------------------------*
+*       CLASS lcl_events_d0100 DEFINITION
+*---------------------------------------------------------------------*
+*
+*---------------------------------------------------------------------*
+class lcl_events_d0100 definition.
+  public section.
+    methods:
+    onf4
+                         for event ONF4
+                         of cl_gui_alv_grid
+                         importing E_FIELDNAME
+                                   E_FIELDVALUE
+                                   ES_ROW_NO
+                                   ER_EVENT_DATA
+                                   ET_BAD_CELLS
+                                   E_DISPLAY, "#EC CALLED
+
+    double_click         for event double_click
+                         of cl_gui_alv_grid
+                         importing e_row
+                                   e_column
+                                   es_row_no, "#EC CALLED
+
+    hotspot_click        for event hotspot_click
+                         of cl_gui_alv_grid
+                         importing e_row_id
+                                   e_column_id
+                                   es_row_no, "#EC CALLED
+
+    button_click         for event button_click
+                         of cl_gui_alv_grid
+                         importing es_col_id
+                                   es_row_no, "#EC CALLED
+
+    data_changed         for event data_changed
+                         of cl_gui_alv_grid
+                         importing er_data_changed
+                                   e_onf4
+                                   e_onf4_before
+                                   e_onf4_after, "#EC CALLED
+
+    data_changed_finished
+                         for event data_changed_finished
+                         of cl_gui_alv_grid, "#EC CALLED
+
+    on_close_log
+                         for event close
+                         of CL_GUI_DIALOGBOX_CONTAINER,
+
+    on_close_dialog
+                         for event close
+                         of CL_GUI_DIALOGBOX_CONTAINER.
+
+endclass.                    "lcl_events_d0100 DEFINITION
+
+*---------------------------------------------------------------------*
+*       CLASS lcl_events_d0100 IMPLEMENTATION
+*---------------------------------------------------------------------*
+*
+*---------------------------------------------------------------------*
+class lcl_events_d0100 implementation.
+*---------------------------------------------------------------------*
+*       METHOD double_click                                           *
+*---------------------------------------------------------------------*
+*       ........                                                      *
+*---------------------------------------------------------------------*
+  method double_click.
+    perform d0100_event_double_click using e_row
+                                           e_column.
+  endmethod.                    "double_click
+
+*---------------------------------------------------------------------*
+*       METHOD hotspot_click                                          *
+*---------------------------------------------------------------------*
+*       ........                                                      *
+*---------------------------------------------------------------------*
+  method hotspot_click.
+    perform d0100_event_hotspot_click using e_row_id
+                                            e_column_id
+                                            es_row_no.
+  endmethod.                    "hotspot_click
+
+*---------------------------------------------------------------------*
+*       METHOD button_click                                           *
+*---------------------------------------------------------------------*
+*       ........                                                      *
+*---------------------------------------------------------------------*
+  method button_click.
+    perform d0100_event_button_click using es_col_id
+                                           es_row_no.
+  endmethod.                    "button_click
+
+  method data_changed.
+    perform d0100_event_data_changed using er_data_changed
+                                           e_onf4
+                                           e_onf4_before
+                                           e_onf4_after.
+  endmethod.                    "data_changed
+
+  method data_changed_finished.
+    perform d0100_event_data_changed_finis.
+  endmethod.                    "data_changed_finished
+
+  method ONF4.
+    perform d0100_event_onf4 using E_FIELDNAME
+                                   E_FIELDVALUE
+                                   ES_ROW_NO
+                                   ER_EVENT_DATA
+                                   ET_BAD_CELLS
+                                   E_DISPLAY.
+  endmethod.                    "ONF4
+
+  method on_close_log.
+    perform on_close_log.
+  endmethod.
+
+  method on_close_dialog.
+    perform on_close_dialog.
+  endmethod.
+endclass.                    "lcl_events_d0100 IMPLEMENTATION
+
+form on_close_dialog.
+  call method gr_dialog->free.
+  clear gr_dialog.
+  clear gv_dialog_handle.
+endform.
+
+selection-screen begin of block base_options with frame title text-100.
+
+* Объявляем параметры выбора для отчета
+SELECT-OPTIONS:
+                  so_dcret FOR sy-datum                 " Дата создания
+                , so_zgnum FOR ZTB_WF_SKIP_RTDM-ZCNUM   " Номер заявки
+                .
+PARAMETERS:
+    layout    LIKE disvariant-variant. "LAYOUT
+
+selection-screen end of block base_options.
+
+AT SELECTION-SCREEN OUTPUT.
+
+*----------------------------------------------------------------------*
+* START-OF-SELECTION                                                     *
+*----------------------------------------------------------------------*
+START-OF-SELECTION.
+* R - HISTORY DATA
+* A - SETTINGS DATA
+  select R~RTDM_NUM              AS MAX_RTDM_NUM
+         R~ZCNUM
+         R~RTDM_RESULT           AS RTDM_RESULT
+         R~RTDM_DATE             AS RTDM_DATE
+         R~RTDM_TIME             AS RTDM_TIME
+         R~RTDM_ID               AS RTDM_NUM
+         A~RTDM_SKIP
+         R~RTDM_SKIP             AS HISTORY_RTDM_SKIP
+         R~RTDM_SKIP_DATE
+         R~RTDM_SKIP_TIME
+         R~RTDM_SKIP_USER        AS USER_CHANGE
+         T~NAME_RESULT           AS RTDM_RESULT_TEXT
+         M~DATECRT               AS DATE_CREATE
+    INTO CORRESPONDING FIELDS OF TABLE  gt_main_out_tab
+    from ZTB_WF_EXP_RTDM  AS R
+    LEFT
+    JOIN ZTB_WF_SKIP_RTDM AS A
+      ON A~ZCNUM    = R~ZCNUM
+     AND A~RTDM_ID  = R~RTDM_ID
+    JOIN ZWF_ZC AS M
+      ON M~ZCNUM    = R~ZCNUM
+    LEFT
+    JOIN ZTB_WF_EXP_RTDMR AS T
+      ON T~RTDM_RESULT = R~RTDM_RESULT
+   WHERE R~ZCNUM       in so_zgnum    " Номер заявки
+     AND M~DATECRT     in so_dcret    " Дата создания заявки в R3
+     AND R~RTDM_RESULT in ('77', '88', '99')
+     AND R~RTDM_ID     GT 1
+     AND R~RTDM_NUM = ( SELECT MAX( F~RTDM_NUM )
+                          FROM ZTB_WF_EXP_RTDM AS F
+                         WHERE F~ZCNUM   EQ R~ZCNUM
+                           AND F~RTDM_ID EQ R~RTDM_ID
+                      )
+  .
+
+    select R~RTDM_NUM              AS MAX_RTDM_NUM
+           R~ZCNUM
+           R~RTDM_RESULT
+           R~RTDM_DATE             AS RTDM_DATE
+           R~RTDM_TIME             AS RTDM_TIME
+           R~RTDM_ID               AS RTDM_NUM
+           A~RTDM_SKIP
+           R~RTDM_SKIP             AS HISTORY_RTDM_SKIP
+           R~RTDM_SKIP_DATE
+           R~RTDM_SKIP_TIME
+           R~RTDM_SKIP_USER        AS USER_CHANGE
+           T~NAME_RESULT           AS RTDM_RESULT_TEXT
+           M~DATECRT               AS DATE_CREATE
+    APPENDING CORRESPONDING FIELDS OF TABLE gt_main_out_tab
+    from ZTB_WF_EXP_RTDM  AS R
+*    LEFT
+    JOIN ZTB_WF_SKIP_RTDM AS A
+      ON A~ZCNUM       = R~ZCNUM
+     AND A~RTDM_ID     = R~RTDM_ID
+    JOIN ZWF_ZC AS M
+      ON M~ZCNUM       = R~ZCNUM
+    LEFT
+    JOIN ZTB_WF_EXP_RTDMR AS T
+      ON T~RTDM_RESULT = R~RTDM_RESULT
+   WHERE R~ZCNUM       in so_zgnum    " Номер заявки
+     AND M~DATECRT     in so_dcret    " Дата создания заявки в R3
+     AND R~RTDM_RESULT EQ '0'
+     AND R~RTDM_ID     GT 1
+     AND R~RTDM_NUM = ( SELECT MAX( F~RTDM_NUM )
+                          FROM ZTB_WF_EXP_RTDM AS F
+                         WHERE F~ZCNUM   EQ R~ZCNUM
+                           AND F~RTDM_ID EQ R~RTDM_ID
+                      )
+  .
+
+  SORT gt_main_out_tab ASCENDING BY ZCNUM RTDM_NUM.
+  CLEAR gt_main_out_tab_cmp.
+
+  if gt_main_out_tab[] is not initial.
+* Собираем все вызовы по найденным заявкам
+    select R~RTDM_NUM              AS MAX_RTDM_NUM
+           R~ZCNUM
+           R~RTDM_RESULT
+           R~RTDM_DATE             AS RTDM_DATE
+           R~RTDM_TIME             AS RTDM_TIME
+           R~RTDM_ID               AS RTDM_NUM
+           A~RTDM_SKIP
+           R~RTDM_SKIP             AS HISTORY_RTDM_SKIP
+           R~RTDM_SKIP_DATE
+           R~RTDM_SKIP_TIME
+           R~RTDM_SKIP_USER        AS USER_CHANGE
+           T~NAME_RESULT           AS RTDM_RESULT_TEXT
+           M~DATECRT               AS DATE_CREATE
+      INTO CORRESPONDING FIELDS OF TABLE gt_main_out_tab_cmp
+      FROM ZTB_WF_EXP_RTDM  AS R
+      LEFT
+      JOIN ZTB_WF_SKIP_RTDM AS A
+        ON A~ZCNUM       = R~ZCNUM
+       AND A~RTDM_ID     = R~RTDM_ID
+      JOIN ZWF_ZC AS M
+        ON M~ZCNUM       = R~ZCNUM
+      LEFT
+      JOIN ZTB_WF_EXP_RTDMR AS T
+        ON T~RTDM_RESULT = R~RTDM_RESULT
+       FOR ALL ENTRIES IN gt_main_out_tab
+     WHERE R~ZCNUM     = gt_main_out_tab-ZCNUM
+       AND R~RTDM_ID     GT 1
+       AND R~RTDM_NUM = ( SELECT MAX( F~RTDM_NUM )
+                            FROM ZTB_WF_EXP_RTDM AS F
+                           WHERE F~ZCNUM   EQ R~ZCNUM
+                             AND F~RTDM_ID EQ R~RTDM_ID
+                        ).
+   endif.
+* Добавляем заявки
+       select A~ZCNUM
+              A~RTDM_NUM
+              A~RTDM_SKIP             AS HISTORY_RTDM_SKIP
+              A~RTDM_SKIP
+              A~RTDM_SKIP_DATE
+              A~RTDM_SKIP_TIME
+              A~USER_CHANGE
+              M~DATECRT               AS DATE_CREATE
+         INTO CORRESPONDING FIELDS OF TABLE gt_main_out_tab
+         FROM ZTB_WF_SKIP_RTDM AS A
+         JOIN ZWF_ZC AS M
+           ON M~ZCNUM       = A~ZCNUM
+         WHERE EXISTS ( SELECT F~RTDM_NUM
+                          FROM ZTB_WF_EXP_RTDM AS F
+                         WHERE F~ZCNUM       EQ A~ZCNUM
+                           AND F~RTDM_ID     EQ '1'
+                           AND F~RTDM_RESULT EQ '0'
+                      )
+           AND A~ZCNUM       in so_zgnum     " Номер заявки
+           AND M~DATECRT     in so_dcret.    " Дата создания заявки в R3
+
+  LOOP AT gt_main_out_tab_cmp ASSIGNING <fs_main_out_tab>.
+    READ TABLE gt_main_out_tab
+      WITH KEY CLIENT       = <fs_main_out_tab>-CLIENT
+               ZCNUM        = <fs_main_out_tab>-ZCNUM
+               RTDM_NUM     = <fs_main_out_tab>-RTDM_NUM
+      TRANSPORTING NO FIELDS.
+    IF SY-SUBRC EQ 0.
+      DELETE gt_main_out_tab INDEX SY-TABIX.
+    ENDIF.
+  ENDLOOP.
+
+  LOOP AT gt_main_out_tab ASSIGNING <fs_main_out_tab>.
+    APPEND <fs_main_out_tab> TO gt_main_out_tab_cmp.
+  ENDLOOP.
+
+  gt_main_out_tab[] = gt_main_out_tab_cmp[].
+  perform Z_CHECK_ROLE.
+*----------------------------------------------------------------------*
+* END-OF-SELECTION                                                     *
+*----------------------------------------------------------------------*
+end-of-selection.
+
+  call screen 100.
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_exit
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_exit .
+
+  data: l_okcode like sy-ucomm.
+
+  l_okcode = g_okcode.
+  clear g_okcode.
+
+  case l_okcode.
+    when con_exit or con_back or con_canc.
+      call method gr_grid_d0100->free.
+      call method gr_container_d0100->free.
+
+      call method cl_gui_cfw=>flush.
+
+      clear gr_container_d0100.
+      clear gr_grid_d0100.
+      clear gr_events_d0100.
+
+      set screen gv_next_screen.
+      leave screen.
+  endcase.
+
+endform.                    " d0100_exit
+
+*&---------------------------------------------------------------------*
+*&      Module  d0100_exit  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+module d0100_exit input.
+  perform d0100_exit.
+endmodule.                 " d0100_exit  INPUT
+
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_event_button_click
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_event_button_click using es_col_id type lvc_s_col
+                                    es_row_no type lvc_s_roid."#EC *
+*  message i000(0k) with 'Один щелчок мыши на строке' es_row_no-ROW_ID  es_col_id.
+endform.                    " d0100_event_button_click
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_event_data_changed
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_event_data_changed using er_data_changed
+                                    e_onf4
+                                    e_onf4_before
+                                    e_onf4_after.           "#EC *
+*  message i000(0k) with 'Изменение данных'.
+endform.                    " d0100_event_data_changed
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_event_data_changed_finis
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_event_data_changed_finis .                       "#EC *
+*  message i000(0k) with 'Изменение данных финал'.
+endform.                    " d0100_event_data_changed_finis
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_event_double_click
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_event_double_click using e_row    type lvc_s_row
+                                    e_column type lvc_s_col."#EC *
+
+.
+*  message i000(0k) with 'Двойной щелчок мыши на строке' e_row  e_column.
+endform.                    " d0100_event_double_click
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_event_hotspot_click
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_event_hotspot_click using e_row_id    type lvc_s_row
+                                     e_column_id type lvc_s_col
+                                     es_row_no   type lvc_s_roid."#EC *
+*  message i000(0k) with 'hotspot_click' e_row_id  e_column_id.
+endform.                    " d0100_event_hotspot_click
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_event_onf4
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_event_onf4 using E_FIELDNAME   type LVC_FNAME
+                            E_FIELDVALUE  type LVC_VALUE
+                            ES_ROW_NO     type LVC_S_ROID
+                            ER_EVENT_DATA type ref to CL_ALV_EVENT_DATA
+                            ET_BAD_CELLS  type LVC_T_MODI
+                            E_DISPLAY     type CHAR01
+                                 .
+*  message i000(0k) with 'event_onf4' E_FIELDNAME E_FIELDVALUE ES_ROW_NO-ROW_ID.
+endform.
+
+*&---------------------------------------------------------------------*
+*&      Module  d0100_set_status  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE d0100_set_status OUTPUT.
+
+  types: begin of l_ty_s_excl,
+           func type syucomm,
+         end   of l_ty_s_excl,
+         l_ty_t_excl type standard table of l_ty_s_excl.
+
+  data: lt_excl type l_ty_t_excl.
+  set pf-status 'D0100' excluding lt_excl.
+  set titlebar 'D0100'.
+
+ENDMODULE.                 " d0100_set_status  OUTPUT
+
+*&---------------------------------------------------------------------*
+*&      Module  d0100_prepare_container  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE d0100_prepare_container OUTPUT.
+
+  data: lt_fcat             type lvc_t_fcat,
+        ls_fcat             type lvc_s_fcat,
+        ls_layo             type lvc_s_layo,
+        ls_vari             type disvariant,
+        ls_prnt             type lvc_s_prnt,
+        lt_hype             type lvc_t_hype,
+        l_consistency_check type char1.
+
+  if gr_container_d0100 is initial.
+    if cl_gui_alv_grid=>offline( ) is initial.
+      create object gr_container_d0100
+                    exporting container_name = 'D0100_CONTAINER'.
+    endif.
+
+    create object gr_grid_d0100
+                  exporting i_parent = gr_container_d0100.
+
+    perform d0100_set_grid_fcat changing lt_fcat. gt_fcat[] = lt_fcat[].
+    perform d0100_set_grid_events.
+
+    call method gr_grid_d0100->set_ready_for_input
+      exporting
+        i_ready_for_input = grid_mode_display.
+
+    gs_screen_option-edit_mode = con_edit_mode_display.
+
+    call method gr_grid_d0100->set_table_for_first_display
+      exporting
+        i_structure_name    = con_str
+        i_save              = 'A'
+        i_default           = con_true
+        is_layout           = ls_layo
+      changing
+        it_outtab           = gt_main_out_tab[]
+        it_fieldcatalog     = lt_fcat
+        .
+  endif.
+
+ENDMODULE.                 " d0100_prepare_container  OUTPUT
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_set_grid_events
+*&---------------------------------------------------------------------*
+*       text
+* Форма для установки обработчиков событий
+*----------------------------------------------------------------------*
+form d0100_set_grid_events .
+
+  create object gr_events_d0100.
+
+  set handler gr_events_d0100->onf4
+              for gr_grid_d0100.
+  set handler gr_events_d0100->double_click
+              for gr_grid_d0100.
+  set handler gr_events_d0100->hotspot_click
+              for gr_grid_d0100.
+  set handler gr_events_d0100->button_click
+              for gr_grid_d0100.
+  set handler gr_events_d0100->data_changed
+              for gr_grid_d0100.
+ set handler gr_events_d0100->data_changed_finished
+              for gr_grid_d0100.
+endform.                    " d0100_set_grid_events
+
+*&---------------------------------------------------------------------*
+*&      Module  d0100_fcode  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE d0100_fcode INPUT.
+
+  field-symbols:  <ls_source>    type ZSTR_WF_SKIP_RTDM_REP
+                 ,<ls_restore>   type ZSTR_WF_SKIP_RTDM_REP
+   .
+
+  data:
+*  ls_layo             type lvc_s_layo
+         lv_flg_change       type char1
+        ,lv_max_rtdm_num     type ZED_RTDM_NUM
+        ,lv_flg_errchange    type char1
+        ,l_okcode            like sy-ucomm
+        ,lv_valid            type ABAP_BOOL
+*        ,ls_main_out_tab     type ZTB_PRTNRDAT_OLP
+        ,ls_index_rows       type LVC_S_ROW.
+
+  l_okcode = sy-ucomm. " g_okcode.
+  clear g_okcode.
+
+  case l_okcode.
+*****************************************************
+* Обработка событий от кнопок: ВЫХОД, НАЗАД, ОТМЕНА *
+*****************************************************
+    when con_exit or con_back or con_canc.
+     if gv_show_warning eq 'X'.
+        call method gr_grid_d0100->check_changed_data
+          IMPORTING E_VALID = lv_valid.
+        if lv_valid eq 'X'.
+**          perform check_data_change using lv_flg_change lv_flg_errchange.
+**          if lv_flg_change eq 'X'.
+*            perform show_warning.
+**            clear gv_show_warning.
+**          endif.
+**          check lv_flg_change ne 'X'.
+        else.
+          exit.
+        endif.
+      endif.
+*
+      if l_okcode eq con_canc.
+*        gt_main_out_tab[] = gt_main_out_tab_cmp[].
+        call method gr_grid_d0100->set_table_for_first_display
+          exporting
+            i_structure_name    = con_str
+            i_save              = 'A'
+            i_default           = con_true
+            is_layout           = ls_layo
+          changing
+            it_outtab           = gt_main_out_tab[]
+            it_fieldcatalog     = gt_fcat
+          .
+        gv_show_warning = 'X'.
+      else.
+        g_okcode = l_okcode.
+        perform d0100_exit.
+      endif.
+*****************************************
+* Обработка события от кнопки СОХРАНИТЬ *
+*****************************************
+    when con_save.
+      call method gr_grid_d0100->check_changed_data
+                    IMPORTING E_VALID = lv_valid.
+      if lv_valid EQ 'X'.
+* Проверяем введенные данные ф. check_data_change и сохраняем при необходимости
+        perform check_data_change using lv_flg_change lv_flg_errchange.
+* Если были ошибки то показываем журнал ошибок
+        if lv_flg_errchange = 'X'.
+          perform display_protocol using 'X'
+                                         'X'.
+        endif.
+        if lv_flg_change EQ 'X'.
+          message i000(0k) with 'Данные успешно сохранены'.
+        else.
+          message i000(0k) with 'Нет изменений в данных'.
+        endif.
+      endif.
+****************************************************
+* Обработка события от кнопки Просмотреть/Изменить *
+****************************************************
+    when 'TOGGLE'.                                          "#EC NOTEXT
+      data: l_edit type i.
+
+      case gs_screen_option-edit_mode.
+        when con_edit_mode_change.
+          gs_screen_option-edit_mode = con_edit_mode_display.
+          l_edit                     = con_off.
+        when con_edit_mode_display.
+          if gv_role_exists EQ 'X'.
+            gs_screen_option-edit_mode = con_edit_mode_change.
+            l_edit                     = con_on.
+          else.
+            gs_screen_option-edit_mode = con_edit_mode_display.
+            l_edit                     = con_off.
+          endif.
+      endcase.
+* Установка состояния вводы вывода для таблицы
+    call method gr_grid_d0100->set_ready_for_input
+      exporting
+        i_ready_for_input = l_edit.
+************************************************************
+* Обработка события от кнопки Выделить всё/снять выделение *
+************************************************************
+    when 'CHANGE'.
+      check gv_role_exists EQ 'X'.
+      call method gr_grid_d0100->check_changed_data
+                    IMPORTING E_VALID = lv_valid.
+* Узнаем какие строчки выделены
+      call method gr_grid_d0100->GET_SELECTED_ROWS
+        importing ET_INDEX_ROWS = GT_INDEX_ROWS
+                  ET_ROW_NO     = GT_ROW_NO.
+
+      if GT_INDEX_ROWS[] is initial.
+        loop at gt_main_out_tab ASSIGNING <ls_source>.
+          <ls_source>-RTDM_SKIP = gv_change_all_skip.
+        endloop.
+
+        IF gv_change_all_skip EQ 'X'.
+           gv_change_all_skip = ' '.
+        ELSE.
+           gv_change_all_skip = 'X'.
+        ENDIF.
+      else.
+        loop at GT_INDEX_ROWS into ls_index_rows.
+* Начало: Зафиксируем изменения в основной таблице
+          READ TABLE gt_main_out_tab
+            INDEX ls_index_rows-INDEX
+            ASSIGNING <ls_source>.
+
+          IF <ls_source>-RTDM_SKIP EQ 'X'.
+             <ls_source>-RTDM_SKIP = ' '.
+          ELSE.
+             <ls_source>-RTDM_SKIP = 'X'.
+          ENDIF.
+* Конец:  Зафиксируем изменения в основной таблице
+        endloop.
+      endif.
+      call method gr_grid_d0100->refresh_table_display. " Переобновление таблицы из памяти
+************************************************************
+* Обработка события от кнопки Обновить                     *
+************************************************************
+    when 'REFRESH'.
+
+      LOOP AT gt_main_out_tab ASSIGNING <ls_source>.
+        SELECT SINGLE
+               RTDM_SKIP
+          INTO <ls_source>-RTDM_SKIP
+          FROM ZTB_WF_SKIP_RTDM
+         WHERE ZCNUM       = <ls_source>-ZCNUM
+           AND RTDM_NUM    = <ls_source>-RTDM_NUM.
+
+        SELECT MAX( F~RTDM_NUM )
+          INTO lv_max_rtdm_num
+          FROM ZTB_WF_EXP_RTDM AS F
+         WHERE F~ZCNUM   EQ <ls_source>-ZCNUM
+           AND F~RTDM_ID EQ <ls_source>-RTDM_NUM
+           AND F~RTDM_ID GT 1.
+
+* Если уже были вызовы по заявке
+        if lv_max_rtdm_num GT 0.
+          SELECT SINGLE
+                 RTDM_SKIP_DATE
+                 RTDM_SKIP_TIME
+                 RTDM_SKIP_USER
+                 RTDM_SKIP
+            INTO (<ls_source>-RTDM_SKIP_DATE,
+                  <ls_source>-RTDM_SKIP_TIME,
+                  <ls_source>-USER_CHANGE,
+                  <ls_source>-HISTORY_RTDM_SKIP)
+            FROM ZTB_WF_EXP_RTDM AS F
+           WHERE F~ZCNUM    EQ <ls_source>-ZCNUM          " Номер заявки
+             AND F~RTDM_ID  EQ <ls_source>-RTDM_NUM       " Номер вызова (1, 2, 3 - EXPERT)
+             AND F~RTDM_ID  GT 1
+             AND F~RTDM_NUM EQ lv_max_rtdm_num.           " Порядковый номер вызова (1..N)
+        else.
+* Если еше небыло вызовов по заявке
+          SELECT SINGLE
+                 RTDM_SKIP_DATE
+                 RTDM_SKIP_TIME
+                 USER_CHANGE
+            INTO (<ls_source>-RTDM_SKIP_DATE,
+                  <ls_source>-RTDM_SKIP_TIME,
+                  <ls_source>-USER_CHANGE)
+            FROM ZTB_WF_SKIP_RTDM
+           WHERE ZCNUM       = <ls_source>-ZCNUM
+             AND RTDM_NUM    = <ls_source>-RTDM_NUM.
+          <ls_source>-HISTORY_RTDM_SKIP = <ls_source>-RTDM_SKIP.
+        endif.
+* Начало: Зафиксируем изменения в таблице для сравнения
+          READ TABLE gt_main_out_tab_cmp
+            WITH KEY CLIENT      = <ls_source>-CLIENT
+                 ZCNUM       = <ls_source>-ZCNUM
+                 RTDM_NUM    = <ls_source>-RTDM_NUM
+            ASSIGNING <ls_restore>.
+
+          if sy-subrc eq 0.
+            <ls_restore> = <ls_source>.
+          endif.
+* Конец:  Зафиксируем изменения в таблице для сравнения
+      ENDLOOP.
+
+      call method gr_grid_d0100->refresh_table_display. " Переобновление таблицы из памяти
+  endcase.
+
+ENDMODULE.                 " d0100_fcode  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Form  d0100_set_grid_fcat
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+form d0100_set_grid_fcat changing ct_fcat type lvc_t_fcat.
+
+  data: ls_fcat type lvc_s_fcat,
+        l_lin   type i.
+
+  field-symbols: <fs_fcat> type lvc_s_fcat.
+
+  call function 'LVC_FIELDCATALOG_MERGE'
+    exporting
+      i_buffer_active        = ' ' " gs_test-buffer_active
+      i_structure_name       = con_str
+      i_client_never_display = con_true
+      i_bypassing_buffer     = ' ' " gs_test-bypassing_buffer
+    changing
+      ct_fieldcat            = ct_fcat[]
+    exceptions
+      inconsistent_interface = 1
+      program_error          = 2
+      others                 = 3.
+  if sy-subrc <> 0.
+    message id sy-msgid type sy-msgty number sy-msgno
+            with sy-msgv1 sy-msgv2 sy-msgv3 sy-msgv4.
+  endif.
+***************************************************************
+*****   Настройка вывода названий полей в таблице (нач.)  *****
+***************************************************************
+  loop at ct_fcat assigning <fs_fcat>.
+    clear <fs_fcat>-edit.
+    <fs_fcat>-OUTPUTLEN = 12.
+* Начало: Настраиваем порядок вывода полей
+    if <fs_fcat>-fieldname eq 'RTDM_RESULT_TEXT'.
+      <fs_fcat>-COL_POS = 4.
+    endif.
+    if <fs_fcat>-fieldname eq 'RTDM_RESULT'.
+      <fs_fcat>-COL_POS = 3.
+    endif.
+    if <fs_fcat>-fieldname eq 'RTDM_DATE'.
+      <fs_fcat>-COL_POS = 10.
+    endif.
+    if <fs_fcat>-fieldname eq 'RTDM_TIME'.
+      <fs_fcat>-COL_POS = 11.
+    endif.
+    if <fs_fcat>-fieldname eq 'HISTORY_RTDM_SKIP'.
+      <fs_fcat>-COL_POS = 5.
+    endif.
+    if <fs_fcat>-fieldname eq 'ZCNUM'.
+      <fs_fcat>-COL_POS = 1.
+    endif.
+    if <fs_fcat>-fieldname eq 'RTDM_NUM'.
+      <fs_fcat>-COL_POS = 2.
+    endif.
+    if <fs_fcat>-fieldname eq 'RTDM_ID'.
+      <fs_fcat>-COL_POS = 0.
+    endif.
+    if <fs_fcat>-fieldname eq 'RTDM_SKIP'.
+      <fs_fcat>-COL_POS = 9.
+    endif.
+    if <fs_fcat>-fieldname eq 'RTDM_SKIP_DATE'.
+      <fs_fcat>-COL_POS = 6.
+      <fs_fcat>-scrtext_s  = 'Дата признака'.
+      <fs_fcat>-scrtext_m  = 'Дата признака'.
+    endif.
+    if <fs_fcat>-fieldname eq 'RTDM_SKIP_TIME'.
+      <fs_fcat>-COL_POS = 7.
+      <fs_fcat>-scrtext_s  = 'Время признака'.
+      <fs_fcat>-scrtext_m  = 'Время признака'.
+      <fs_fcat>-OUTPUTLEN = 14.
+    endif.
+    if <fs_fcat>-fieldname eq 'USER_CHANGE'.
+      <fs_fcat>-COL_POS = 8.
+    endif.
+* Конец: Настраиваем порядок вывода полей
+
+    if <fs_fcat>-fieldname eq 'RTDM_RESULT_TEXT'.
+      <fs_fcat>-outputlen = 18.
+      <fs_fcat>-scrtext_s  = 'Результат'.
+      <fs_fcat>-scrtext_m  = 'Результат'.
+      <fs_fcat>-scrtext_l  = 'Результат'.
+    endif.
+
+    if <fs_fcat>-fieldname eq 'RTDM_DATE'.
+      <fs_fcat>-outputlen = 15.
+    endif.
+
+    if <fs_fcat>-fieldname eq 'RTDM_TIME'.
+      <fs_fcat>-outputlen = 15.
+    endif.
+
+    if <fs_fcat>-fieldname eq 'ZCNUM'.
+      <fs_fcat>-outputlen = 12.
+    endif.
+
+    if <fs_fcat>-fieldname eq 'HISTORY_RTDM_SKIP'.
+      <fs_fcat>-scrtext_s  = 'Тек RTDM'.
+      <fs_fcat>-scrtext_m  = 'Текущий статус RTDM'.
+      <fs_fcat>-scrtext_l  = 'Текущий статус RTDM'.
+    endif.
+
+    if <fs_fcat>-fieldname eq 'RTDM_SKIP'.
+      <fs_fcat>-scrtext_s  = 'Игнор RTDM'.
+      <fs_fcat>-scrtext_m  = 'Игнорировать (пропустить RTDM)'.
+      <fs_fcat>-scrtext_l  = 'Игнорировать (пропустить RTDM)'.
+      <fs_fcat>-edit       = 'X'.       " Разрешено редактирование
+      <fs_fcat>-F4AVAILABL = 'X'.       " Взведение этого флажка позволило вывести кустомное средство поиска подключенное ранее к таблице выводимой в гриде
+      <fs_fcat>-CHECKBOX   = 'X'.       " Выводим как CHECKBOX
+      <fs_fcat>-outputlen  = 10.
+    endif.
+
+    if <fs_fcat>-fieldname eq 'RTDM_ID'.
+     <fs_fcat>-TECH = 'X'. " Техническое поле
+    endif.
+
+    if <fs_fcat>-fieldname eq 'DATE_CREATE'.
+      <fs_fcat>-scrtext_s  = 'Дата создания'.
+      <fs_fcat>-scrtext_m  = 'Дата создания заявки'.
+      <fs_fcat>-scrtext_l  = 'Дата создания заявки'.
+      clear <fs_fcat>-edit.
+    endif.
+  endloop.
+***************************************************************
+*****   Настройка вывода названий полей в таблице (кон.)  *****
+***************************************************************
+endform.
+
+form check_data using iv_row_selected type LVC_S_ROW.
+
+clear gv_err_logic.
+return.
+
+  data: lv_err_txt1       type string,
+        lv_err_txt2       type string,
+        lv_err_txt3       type string,
+        lv_rowid          type i,
+        lv_value_str(12)  type c,
+        lv_err_txt4       type string.
+
+  lv_err_txt4  = lv_rowid.
+  lv_value_str = 'X'.
+  concatenate 'Ошибка логич контр' ' '   into lv_err_txt1.
+  concatenate 'значение: ' lv_value_str  into lv_err_txt2.
+  concatenate ' строка: '   lv_err_txt4   into lv_err_txt3.
+  concatenate 'Нельзя приcвоить пропуск RTDM' ' ' into lv_err_txt4.
+
+
+  perform add_protocol_entry using 'DB'
+                                   'E'
+                                   '000'
+                                   lv_err_txt1
+                                   lv_err_txt2
+                                   lv_err_txt3
+                                   lv_err_txt4
+                                   'RTDM_SKIP'
+                                   lv_rowid
+                                   0.
+
+  gv_err_logic = 'X'.
+
+endform.
+
+form save_data using iv_row_save type LVC_S_ROW.
+* Сохранение данных в таблицу
+
+
+* Начало: Зафиксируем изменения в таблице для сравнения
+  field-symbols:  <ls_restore>   type ZSTR_WF_SKIP_RTDM_REP,
+                  <fs_data>      type ZTB_WF_SKIP_RTDM.
+  data:           ls_main_data   type ZSTR_WF_SKIP_RTDM_REP,
+                  lt_data        type standard table of ZTB_WF_SKIP_RTDM.
+
+  data: LV_ALG_NUM TYPE I,
+        LS_ZC      TYPE ZWF_ZC,
+        L_RES      TYPE CHAR1.
+
+  READ TABLE gt_main_out_tab
+    INDEX iv_row_save-INDEX
+    INTO ls_main_data.
+
+  select *
+    from ZTB_WF_SKIP_RTDM
+    into table lt_data
+   where zcnum    = ls_main_data-ZCNUM
+     and RTDM_NUM = ls_main_data-RTDM_NUM.
+
+  if lines( lt_data ) = 0.
+* Если настройки не разу не инициализировались
+    CLEAR ls_zc.
+    SELECT SINGLE *
+      INTO ls_zc
+      FROM zwf_zc
+     WHERE zcnum = ls_main_data-ZCNUM.
+* Проверяем тип заявки
+    perform CHECK_PRODUCT_ALGORITM_REQUEST
+                                     USING ls_zc
+                                  CHANGING L_RES.
+* По умолчанию эксперт заявки
+    CLEAR LV_ALG_NUM.
+    IF L_RES EQ 'X'.
+* Если экспресс заявки
+      LV_ALG_NUM = 1.
+    ENDIF.
+* Инициализация настроек
+    CALL FUNCTION 'Z_FM_INIT_SKIP_RTDM'
+      EXPORTING IV_ZCNUM   = ls_main_data-ZCNUM
+                IV_ALG_NUM = LV_ALG_NUM.
+* Перечитываем таблицу lt_data
+    select *
+      from ZTB_WF_SKIP_RTDM
+      into table lt_data
+     where zcnum    = ls_main_data-ZCNUM
+       and RTDM_NUM = ls_main_data-RTDM_NUM.
+  endif.
+
+  loop at lt_data assigning <fs_data>.
+    MOVE <fs_data>-RTDM_NUM TO <fs_data>-RTDM_ID.
+    <fs_data>-RTDM_SKIP      = ls_main_data-RTDM_SKIP.
+    <fs_data>-RTDM_SKIP_DATE = sy-datum.
+    <fs_data>-RTDM_SKIP_TIME = sy-UZEIT.
+    <fs_data>-USER_CHANGE    = sy-uname.
+  endloop.
+
+  modify ZTB_WF_SKIP_RTDM from table lt_data.
+  commit work and wait.
+
+  READ TABLE gt_main_out_tab_cmp
+    WITH KEY CLIENT      = ls_main_data-CLIENT
+             ZCNUM       = ls_main_data-ZCNUM
+             RTDM_NUM    = ls_main_data-RTDM_NUM
+    ASSIGNING <ls_restore>.
+
+  if sy-subrc eq 0.
+    <ls_restore> = ls_main_data.
+  endif.
+* Конец:  Зафиксируем изменения в таблице для сравнения
+
+endform.
+
+form check_data_change using ev_flg_change       type char1
+                             ev_flg_errchange    type char1.
+
+  data:
+    ls_main_data        type ZSTR_WF_SKIP_RTDM_REP,
+    ls_main_data_cmp    type ZSTR_WF_SKIP_RTDM_REP,
+    ls_index_rows       type LVC_S_ROW,
+    lv_count_change_rec type I.
+
+  clear ev_flg_errchange.
+  clear ev_flg_change.
+  lv_count_change_rec = 0.
+
+  loop at gt_main_out_tab_cmp into ls_main_data.
+    read table gt_main_out_tab
+      INTO ls_main_data_cmp
+      WITH KEY CLIENT      = ls_main_data-CLIENT
+               ZCNUM       = ls_main_data-ZCNUM
+               RTDM_NUM    = ls_main_data-RTDM_NUM.
+
+    if sy-subrc ne 0.
+* суда попадаем если пользователь удалил одну или несколько записей
+*      ev_flg_change       = 'X'.
+*      lv_count_change_rec = lv_count_change_rec + 1.
+    else.
+* Запоминаем индекс тек строки
+      ls_index_rows-INDEX     = sy-tabix.
+* Проверяем есть ли изменения
+      if ls_main_data_cmp <> ls_main_data.
+* суда попадаем если что то поменялось в самих данных
+        ev_flg_change           = 'X'.
+        lv_count_change_rec     = lv_count_change_rec + 1.
+* Проверяем введенные данные ф. check_data
+        perform check_data using ls_index_rows.
+        if gv_err_logic ne 'X'.
+* Если нет ошибок то сохраняем
+          perform save_data using ls_index_rows.
+        else.
+          ev_flg_errchange = 'X'.
+        endif.
+      endif.
+    endif.
+  endloop.
+
+*  field-symbols: <fs_template> type ZTB_WF_SKIP_RTDM.
+*
+*  data:
+*    lt_template type standard table of ZTB_WF_SKIP_RTDM.
+*
+*  select *
+*    into table lt_template
+*    from ZTB_WF_SKIP_RTDM.
+*
+*  loop at lt_template assigning <fs_template>.
+*    MOVE <fs_template>-RTDM_NUM TO <fs_template>-RTDM_ID.
+*  endloop.
+*
+*  modify ZTB_WF_SKIP_RTDM from table lt_template.
+*  commit work and wait.
+endform.
+
+FORM Z_CHECK_ROLE.
+  clear gv_role_exists.
+  DATA: result_tab LIKE swhactor OCCURS 0 WITH HEADER LINE,
+        result_obj LIKE OBJEC OCCURS 0 WITH HEADER LINE.
+  DATA BEGIN OF org_object OCCURS 0.
+          INCLUDE STRUCTURE swhactor.
+  DATA END OF org_object.
+  org_object-otype = 'US'.
+  org_object-objid = sy-uname.
+
+***********************************************
+* Определим задачи пользователя
+  CALL FUNCTION 'RH_STRUC_GET'
+        EXPORTING
+             act_otype       = org_object-otype
+             act_objid       = org_object-objid
+             act_wegid       = 'US_TASKS' " Все задачи пользователя
+*             ACT_WEGID       = 'TASKSPWF' " Все задачи лица
+*             ACT_PLVAR       = ' '
+*             ACT_BEGDA       = SY-DATUM
+*             ACT_ENDDA       = SY-DATUM
+*             ACT_TDEPTH      = 0
+             authority_check = ' '
+*        IMPORTING
+*             ACT_PLVAR       =
+        TABLES
+*             result_tab      = result_tab
+             RESULT_OBJEC    = RESULT_OBJ
+*             RESULT_STRUC    =
+        EXCEPTIONS
+             no_plvar_found  = 1
+             no_entry_found  = 2
+             OTHERS          = 3.
+  IF sy-subrc = 0.
+*    удалим всё кроме ролей
+*    DELETE result_tab WHERE ( otype <> 'AG' ).
+*    проверим нужные задачи
+*    LOOP AT result_tab WHERE objid EQ 'Z_WF_ADM_DRK'.
+    LOOP AT result_obj WHERE realo EQ 'Z_WF_CHECK_SKIP_RTDM'.
+      gv_role_exists = 'X'.
+      exit.
+    ENDLOOP.
+  ENDIF.
+ENDFORM. " Z_CHECK_ROLE
+
+
+***&--------------------------------------------------------------------*
+***&      Form  zc_util_checkscortypeprodsub
+***&--------------------------------------------------------------------*
+**FORM zc_util_checkscortypeprodsub
+**                    using
+**                      prod       TYPE zed_zcprodid
+**                      prodsub    TYPE zed_zcprdsubtpid
+**                 changing
+**                      res        type i
+**.
+***     по умолчанию - НЕ (скоринговый типированный НЕ овердрафт)
+**      res = 0.
+**      IF prod = 'M1000'.
+***       кредитование МСП
+**        DATA opt LIKE zwf_zcprdsubtp-options.
+**        CLEAR opt.
+**        SELECT SINGLE options INTO opt
+**          FROM  zwf_zcprdsubtp
+**          WHERE subtypeid = prodsub
+**            AND prdtype   = prod
+**            AND options   LIKE '%SCORTYPE%'
+**        .
+**        IF sy-subrc = 0.
+**          IF     opt CP '*SCORTYPE1*'.
+**            res = 1.
+**          ELSEIF opt CP '*SCORTYPE2*'.
+**            res = 2.
+**          ENDIF.
+**        ELSE.
+***       остальные продукты
+**        ENDIF.
+**      ENDIF.
+**ENDFORM.
+**
+***&--------------------------------------------------------------------*
+***&      Form  zc_util_checkprodsub
+***&--------------------------------------------------------------------*
+**FORM zc_util_checkprodsub
+**                    using
+**                      prod       TYPE zed_zcprodid
+**                      prodsub    TYPE zed_zcprdsubtpid
+**                      options    TYPE zed_zcoptions
+**                 changing
+**                      res        type char1
+**.
+**      res = ''.
+**      DATA: lv_prod1       TYPE zed_zcprodid,
+**            lv_prodsub1    TYPE zed_zcprdsubtpid
+**            .
+**      SELECT SINGLE prdtype subtypeid
+**        INTO (lv_prod1, lv_prodsub1)
+**        FROM  zwf_zcprdsubtp
+**        WHERE subtypeid = prodsub
+**          AND prdtype   = prod
+**          AND options   LIKE options
+**      .
+**      IF sy-subrc = 0.
+**        res = 'X'.
+**      ENDIF.
+**ENDFORM.
+**
+***&--------------------------------------------------------------------*
+***&      Form  zc_util_checkscoroverprodsub
+***&--------------------------------------------------------------------*
+**FORM zc_util_checkscoroverprodsub
+**                    using
+**                      prod       TYPE zed_zcprodid
+**                      prodsub    TYPE zed_zcprdsubtpid
+**                 changing
+**                      res        type i
+**.
+***     по умолчанию - НЕ скоринговый овердрафт
+**      res = 0.
+**        IF prod = 'M1000'.
+***        кредитование МСП
+**          DATA opt LIKE zwf_zcprdsubtp-options.
+**          CLEAR opt.
+**          SELECT SINGLE options INTO opt
+**              FROM  zwf_zcprdsubtp
+**              WHERE subtypeid = prodsub
+**                AND prdtype   = prod
+**                AND options   LIKE '%SCOROVER%'
+**          .
+**          IF sy-subrc = 0.
+**            IF     opt CP '*SCOROVER1*'.
+**              res = 1.
+**            ELSEIF opt CP '*SCOROVER2*'.
+**              res = 2.
+***   -->>>ubrr Петряхин Д.А.27.05.2016 [16-1992] SAP R/3: Доработки для запуска новых продуктов МСП
+**            ELSEIF opt CP '*SCOROVER3*'.
+**              res = 3.
+***   --<<<ubrr Петряхин Д.А.27.05.2016 [16-1992] SAP R/3: Доработки для запуска новых продуктов МСП
+**            ENDIF.
+**          ENDIF.
+**        ELSE.
+***       остальные продукты
+**        ENDIF.
+**ENDFORM.
+**
+***&--------------------------------------------------------------------*
+***&      Form  zc_util_checkscorsalaryprodsub
+***&--------------------------------------------------------------------*
+**FORM zc_util_checkscorsalaryprodsub
+**                              using
+**                                     prod       TYPE zed_zcprodid
+**                                     prodsub    TYPE zed_zcprdsubtpid
+**                           changing
+**                                     res        type i
+**.
+***     по умолчанию - НЕ зарплатный скоринговый овердрафт
+**      res = 0.
+**      IF prod = 'M1000'.
+***     кредитование МСП
+**        DATA opt LIKE zwf_zcprdsubtp-options.
+**        CLEAR opt.
+**        SELECT SINGLE options INTO opt
+**            FROM  zwf_zcprdsubtp
+**            WHERE subtypeid = prodsub
+**              AND prdtype   = prod
+**              AND options   LIKE '%SALARY%'
+**        .
+**        IF sy-subrc = 0.
+**          IF     opt CP '*SALARY1*'.
+**            res = 1.
+**          ELSEIF opt CP '*SALARY2*'.
+**            res = 2.
+**          ENDIF.
+**        ENDIF.
+**      ELSE.
+***     остальные продукты
+**      ENDIF.
+**ENDFORM.                    "CheckScorSalaryProdSub
+**
+***   -->>> 09.2017 Бунтова #44404: [15-1115.1] Автоматизация скоринг-гарантий
+***&--------------------------------------------------------------------*
+***&      Form  zc_util_checkscorgarprodsub
+***&--------------------------------------------------------------------*
+**FORM zc_util_checkscorgarprodsub
+**                   using
+**                        prod       TYPE zed_zcprodid
+**                        prodsub    TYPE zed_zcprdsubtpid
+**                changing
+**                        res        type i
+**.
+***     по умолчанию - НЕ скоринговая гарантия
+**      res = 0.
+**      IF prod = 'W1000'.
+***     кредитование МСП
+**        DATA opt LIKE zwf_zcprdsubtp-options.
+**        CLEAR opt.
+**        SELECT SINGLE options INTO opt
+**            FROM  zwf_zcprdsubtp
+**            WHERE subtypeid = prodsub
+**              AND prdtype   = prod
+**              AND options   LIKE '%SCORGAR%'
+**        .
+**        IF sy-subrc = 0.
+**          IF     opt CP '*SCORGAR1*'.
+**            res = 1.
+**          ELSEIF opt CP '*SCORGAR2*'.
+**            res = 2.
+**          ELSEIF opt CP '*SCORGAR3*'.
+**            res = 3.
+**          ENDIF.
+**        ENDIF.
+**      ELSE.
+***     остальные продукты
+**      ENDIF.
+**ENDFORM.                    "CheckScorGarProdSub
+***   --<<< 09.2017 Бунтова #44404: [15-1115.1] Автоматизация скоринг-гарантий
+**
+***&--------------------------------------------------------------------*
+***&      Form  zc_util_checkscoringprodsub
+***&--------------------------------------------------------------------*
+**FORM zc_util_checkscoringprodsub
+**                 using
+**                      prod       TYPE zed_zcprodid
+**                      prodsub    TYPE zed_zcprdsubtpid
+**                      options    TYPE zed_zcoptions
+**                 changing
+**                      res        type char1.
+**
+**DATA: r_checkscoroverprodsub   type I,
+**      r_checkscortypeprodsub   type I,
+**      r_checkscorsalaryprodsub type I,
+**      r_checkscorgarprodsub    type I.
+**
+**perform zc_util_checkscoroverprodsub
+**                               using   prod
+**                                       prodsub
+**                            changing   r_checkscoroverprodsub.
+**
+**perform zc_util_checkscortypeprodsub
+**                               using   prod
+**                                       prodsub
+**                            changing   r_checkscortypeprodsub.
+**
+**perform zc_util_checkscorsalaryprodsub
+**                                 using prod
+**                                       prodsub
+**                              changing r_checkscorsalaryprodsub.
+**
+**perform zc_util_checkscorgarprodsub
+**                              using    prod
+**                                       prodsub
+**                              changing r_checkscorgarprodsub.
+**
+**      res = ''.
+**      IF prod = 'T1000' OR prod = 'L1000' OR
+**         prod = 'K1000' OR prod = 'G1000' OR
+**         prod = 'P1000' OR prod = 'S1000'.
+**
+**      ELSEIF     prod = 'M1000'
+**             AND
+**             ( prodsub = 8 OR prodsub = 30 ).
+**        res = 'X'.
+**      ELSEIF r_checkscoroverprodsub > 0.
+***       скоринговые МСП овердрафты
+**        res = 'X'.
+*** --->> 06.10.2017 #47151 [17-1266] SAP WF: Новые подвиды для овердрафта
+**      ELSEIF r_checkscorsalaryprodsub > 0.
+***      скоринговые МСП овердрафты зарплатные
+**        res = 'X'.
+*** ---<< 06.10.2017 #47151 [17-1266] SAP WF: Новые подвиды для овердрафта
+***    -->>> 10.04.2019 Некрасов А.В. [19-61108] #61414 SAP WF: Новый продукт "Экспресс-кредит. Фикс.лимит ИП" (Экспресс-кредит "Легкий")
+**      ELSEIF r_checkscortypeprodsub > 0.
+***       скоринговые МСП типированные НЕ овердрафты
+**        res = 'X'.
+***    --<<< 10.04.2019 Некрасов А.В. [19-61108] #61414 SAP WF: Новый продукт "Экспресс-кредит. Фикс.лимит ИП" (Экспресс-кредит "Легкий")
+***    -->>> 09.2017 Бунтова #44404: [15-1115.1] Автоматизация скоринг-гарантий
+**      ELSEIF r_checkscorgarprodsub > 0.
+***       скоринговые МСП гарантии
+**        res = 'X'.
+***    --<<< 09.2017 Бунтова #44404: [15-1115.1] Автоматизация скоринг-гарантий
+**      ELSE.
+**        DATA: prod1       TYPE zed_zcprodid,
+**              prodsub1    TYPE zed_zcprdsubtpid
+**        .
+**        SELECT SINGLE prdtype subtypeid INTO (prod1, prodsub1)
+**            FROM  zwf_zcprdsubtp
+**            WHERE subtypeid = prodsub
+**              AND prdtype   = prod
+**              AND options   LIKE '%SCORING%'
+**        .
+**        IF sy-subrc = 0.
+**          res = 'X'.
+**        ENDIF.
+**      ENDIF.
+**ENDFORM.                    "CheckScoringProdSub
+
+*&--------------------------------------------------------------------*
+*&      Form  CHECK_PRODUCT_REQUEST
+*&--------------------------------------------------------------------*
+FORM CHECK_PRODUCT_ALGORITM_REQUEST
+             using
+               is_zc   TYPE zwf_zc
+             changing
+               r_check TYPE char1.
+**  perform zc_util_checkscoringprodsub
+**                                using is_zc-product1
+**                                      is_zc-prodsub1
+**                                      '%'
+**                             changing r_check.
+  CALL FUNCTION 'Z_FM_WF_ZC_CHECK_SCORING'
+    EXPORTING ZC_STRUCT     = is_zc
+    IMPORTING RES           = r_check
+    EXCEPTIONS NOT_FOUND_ZC = 4
+  .
+  IF SY-SUBRC EQ 0.
+  ENDIF.
+
+ENDFORM.
