@@ -1,0 +1,870 @@
+*&---------------------------------------------------------------------*
+*& Report  ZP_SIM_BANKRUPT_FIND
+*&
+*&---------------------------------------------------------------------*
+*&
+*&
+*&---------------------------------------------------------------------*
+
+REPORT  ZP_SIM_BANKRUPT_FIND.
+
+  tables: ztb_bankrupt_lst, tb003.
+
+  selection-screen begin of block bl01 with frame title text-001.
+    select-options:
+      s_date     FOR ztb_bankrupt_lst-last_msg_date obligatory,
+      s_ccode    FOR ztb_bankrupt_lst-category_code obligatory.
+
+  parameters:
+    p_test       TYPE xfeld default 'X'.
+  selection-screen end of block bl01.
+
+  selection-screen begin of block bl02 with frame title text-002.
+    select-options:
+      s_role     FOR tb003-role no intervals.
+
+  selection-screen end of block bl02.
+
+INITIALIZATION.
+
+  s_ccode-sign   = 'I'.
+  s_ccode-option = 'EQ'.
+  s_ccode-low    = 'SimpleOrganization'.
+  append s_ccode.
+
+  s_ccode-low    = 'CityOrganization'.
+  append s_ccode.
+
+  s_ccode-low    = 'AgricultureOrganization'.
+  append s_ccode.
+
+  s_ccode-low    = 'CreditOrganization'.
+  append s_ccode.
+
+  s_ccode-low    = 'OtherOrganization'.
+  append s_ccode.
+
+  s_ccode-low    = 'StrategicOrganization'.
+  append s_ccode.
+
+  s_ccode-low    = 'MonopolyOrganization'.
+  append s_ccode.
+
+  s_ccode-low    = 'DissolvedBankruptOrganization'.
+  append s_ccode.
+
+  s_ccode-low    = 'AbsentBankrupt'.
+  append s_ccode.
+
+  s_ccode-low    = 'DevelopmentOrganization'.
+  append s_ccode.
+
+  s_ccode-low    = 'EnterpreneurPerson'.
+  append s_ccode.
+
+  s_ccode-low    = 'FarmerPerson'.
+  append s_ccode.
+
+  s_ccode-low    = 'SimplePerson'.
+  append s_ccode.
+
+  s_date-sign   = 'I'.
+  s_date-option = 'EQ'.
+  s_date-low    = sy-datum - 31.
+  s_date-high   = sy-datum.
+  append s_date.
+
+  s_role = 'IEQ'.
+  s_role-low = 'ZF_F2'.
+  append s_role.
+
+  s_role-low = 'ZF_F3'.
+  append s_role.
+
+  s_role-low = 'ZF_F4'.
+  append s_role.
+
+  s_role-low = 'ZF_F5'.
+  append s_role.
+
+  s_role-low = 'ZK_F2'.
+  append s_role.
+
+  s_role-low = 'ZK_F3'.
+  append s_role.
+
+  s_role-low = 'ZK_F4'.
+  append s_role.
+
+START-OF-SELECTION.
+
+  data:
+    lt_bankrupt_lst    TYPE TABLE OF ztb_bankrupt_lst,
+    lt_partner         TYPE TABLE OF bu_partner,
+    lt_partner2        TYPE TABLE OF bu_partner,
+    lv_bpkind          TYPE bu_bpkind,
+    lv_partner         TYPE bu_partner,
+    lv_partner_arbitr  TYPE bu_partner,
+    lv_count           TYPE int4,
+    lv_empty           TYPE bu_partner VALUE -1,
+    lv_bankrupt_empty  TYPE zed_bankruptid,
+    lv_begdt           TYPE string,
+    lv_code            TYPE string,
+    lv_debtortype      TYPE string,
+    lv_message         TYPE string.
+
+  data:
+    lt_xmltab	         TYPE zdm_inetsite_xmlfile_data_tb,
+    lv_result          TYPE string,
+    lv_id              TYPE zed_bankruptid,
+    ls_arbitr          TYPE ztb_bankrupt_arb,
+    ls_arbitr_old      TYPE ztb_bankrupt_arb,
+    ls_bankrupt        TYPE ztb_bankrupt,
+    ls_sro             TYPE zstr_sim_bankrupt_sro,
+    ls_proxy           TYPE zubrr_dm_proxy,
+    ls_proxy_old       TYPE zubrr_dm_proxy,
+    lt_proxy_old       TYPE TABLE OF zubrr_dm_proxy,
+    lv_changed_at	     TYPE zed_sim_changed_at.
+
+  data:
+    lrg_typeid         TYPE RANGE OF bu_id_type,
+    lrg_tax_num        TYPE RANGE OF ztax_num_type,
+    lrg_ogrn_range     TYPE RANGE OF bu_id_number,
+    lrg_role           TYPE RANGE OF bu_partnerrole,
+    ls_role            LIKE LINE OF lrg_role,
+    ls_ogrn_range      LIKE LINE OF lrg_ogrn_range,
+    ls_tax_num         LIKE LINE OF lrg_tax_num,
+    ls_typeid          LIKE LINE OF lrg_typeid,
+*--->>> ubrr 05.06.2020 Севастьянов С.В. #69833 [19-69833] Загрузка данных по банкротству с сайта ЕФРСБ в SAP CRM
+    lv_can_append      TYPE CHAR1,
+    lv_taxnum          TYPE ztax_num_type,
+    lv_snils_num       TYPE zed_snils.
+*---<<< ubrr 05.06.2020 Севастьянов С.В. #69833 [19-69833] Загрузка данных по банкротству с сайта ЕФРСБ в SAP CRM
+
+  data:
+    lr_error              TYPE REF TO cx_root,
+    lr_error_sql          TYPE REF TO cx_sy_native_sql_error,
+    lt_zbut               TYPE TABLE OF zbut0000000001,
+    ls_zbut               TYPE zbut0000000001,
+    lv_result_con         TYPE string,
+    lv_comment_str_con    TYPE string,
+    lv_category           TYPE int2,
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+
+    lv_group              TYPE int2.
+*    lv_kf_id              TYPE zed_bankrupt_kf_id,  " 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+*    lv_bankrupt_type_kf   TYPE zed_bankrupt_type.   " 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+  data:
+    lt_cdtxt          TYPE STANDARD TABLE OF cdtxt,
+    lt_xztb_bankrupt  TYPE STANDARD TABLE OF yztb_bankrupt,
+    lt_yztb_bankrupt  TYPE STANDARD TABLE OF yztb_bankrupt,
+    ls_yztb_bankrupt  TYPE yztb_bankrupt,
+    lv_objectid       TYPE cdhdr-objectid VALUE 'ZSIM_CDO_BNKROT'.
+
+*--->>> ubrr 13.05.2020 Севастьянов С.В. #69833 [19-69833] Загрузка данных по банкротству с сайта ЕФРСБ в SAP CRM
+  data:
+    LV_POST_CODE_TXT    TYPE TEXT20,
+    LV_REGION_TXT       TYPE TEXT100,
+    LV_CITY_TXT         TYPE TEXT100,
+    LV_STREET_TXT       TYPE TEXT120,
+    LV_HOUSE_NUM_TXT    TYPE TEXT40,
+    LV_ROOM_NUM_TXT     TYPE TEXT40,
+    LT_BNT_FIND_LOG     TYPE STANDARD TABLE OF ZTB_BNT_FIND_LOG,
+    LS_BNT_FIND_LOG     LIKE LINE OF LT_BNT_FIND_LOG.
+    .
+*---<<< ubrr 13.05.2020 Севастьянов С.В. #69833 [19-69833] Загрузка данных по банкротству с сайта ЕФРСБ в SAP CRM
+
+  field-symbols:
+    <fs_bankrupt_lst>  TYPE ztb_bankrupt_lst.
+
+  select bankruptid
+         category_code
+         tax_num
+         ogrn_num
+         last_msg_date
+         snils_num
+         last_name
+         first_name
+         middle_name
+         birthdt
+         address "-->><< ubrr 14.05.2020 Севастьянов С.В. #69833 [19-69833]
+    into corresponding fields of table lt_bankrupt_lst
+    from ztb_bankrupt_lst
+  where category_code in s_ccode
+    and last_msg_date in s_date.
+
+  get time stamp field lv_changed_at.
+
+  ls_typeid-sign   = 'I'.
+  ls_typeid-option = 'EQ'.
+  select type
+      into ls_typeid-low
+      from tb039a
+    where xorganisation = 'X'.
+    if ls_typeid-low is not initial.
+       append ls_typeid to lrg_typeid.
+    endif.
+  endselect.
+
+  ls_role-sign   = 'I'.
+  ls_role-option = 'EQ'.
+  select role
+      into ls_role-low
+      from tb003
+    where role in s_role.
+    if ls_role-low is not initial.
+       append ls_role to lrg_role.
+    endif.
+  endselect.
+
+  ls_tax_num-sign      = 'I'.
+  ls_tax_num-option    = 'EQ'.
+  ls_ogrn_range-sign   = 'I'.
+  ls_ogrn_range-option = 'EQ'.
+  loop at lt_bankrupt_lst assigning <fs_bankrupt_lst>.
+    clear: lrg_tax_num[], lrg_ogrn_range[], lt_partner[],
+           ls_arbitr, lv_code, ls_sro, lv_begdt.
+    lv_result_con = <fs_bankrupt_lst>-snils_num.
+    replace all occurrences of '0' in lv_result_con with ''.
+    if lv_result_con is initial.
+       clear <fs_bankrupt_lst>-snils_num.
+    endif.
+    if <fs_bankrupt_lst>-snils_num is not initial and
+       ( <fs_bankrupt_lst>-category_code = 'SimplePerson' or <fs_bankrupt_lst>-category_code = 'AbsentBankrupt' ).
+       ls_ogrn_range-low = <fs_bankrupt_lst>-snils_num.
+       append ls_ogrn_range to lrg_ogrn_range.
+       select a~partner
+         appending table lt_partner
+         from but0id as a
+           inner join but000 as b on b~client  = a~client
+                                 and b~partner = a~partner
+                                 and b~type    = '1'
+                                 and b~xdele   = ''
+       where a~type      = '83'
+         and a~idnumber in lrg_ogrn_range.
+       if sy-subrc is initial.
+          lv_code = <fs_bankrupt_lst>-snils_num.
+       endif.
+    endif.
+    lv_result_con = <fs_bankrupt_lst>-tax_num.
+    replace all occurrences of '0' in lv_result_con with ''.
+    if lv_result_con is initial.
+       clear <fs_bankrupt_lst>-tax_num.
+    endif.
+    if <fs_bankrupt_lst>-tax_num is not initial.
+       clear lrg_tax_num[].
+       ls_tax_num-low = <fs_bankrupt_lst>-tax_num.
+       append ls_tax_num to lrg_tax_num.
+       if <fs_bankrupt_lst>-category_code = 'SimplePerson' or <fs_bankrupt_lst>-category_code = 'AbsentBankrupt'.
+          select a~partner
+            appending table lt_partner
+            from dfkkbptaxnum as a
+              inner join but000 as b on b~client  = a~client
+                                    and b~partner = a~partner
+                                    and b~type    = '1'
+                                    and b~xdele   = ''
+          where a~taxnum in lrg_tax_num
+            and a~taxtype = 'RU1'.
+          if sy-subrc is initial.
+             lv_code = <fs_bankrupt_lst>-tax_num.
+          endif.
+       endif.
+       select a~partner
+         appending table lt_partner
+         from zubrr_dm_taxnuml as a
+           inner join but000 as b on b~client  = a~client
+                                 and b~partner = a~partner
+                                 and b~type    = '2'
+                                 and b~xdele   = ''
+       where a~tax_num in lrg_tax_num
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+         and b~bpkind  in ('0001','0002','0003','0004','0005','0006' ).
+*                           '0008','0009','0010','0011' ).
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+       if sy-subrc is initial.
+          lv_code = <fs_bankrupt_lst>-tax_num.
+       endif.
+    endif.
+    lv_result_con = <fs_bankrupt_lst>-ogrn_num.
+    replace all occurrences of '0' in lv_result_con with ''.
+    if lv_result_con is initial.
+       clear <fs_bankrupt_lst>-ogrn_num.
+    endif.
+    if <fs_bankrupt_lst>-ogrn_num is not initial.
+       clear lrg_ogrn_range[].
+       ls_ogrn_range-low = <fs_bankrupt_lst>-ogrn_num.
+       append ls_ogrn_range to lrg_ogrn_range.
+       select a~partner
+         appending table lt_partner
+         from but0id as a
+           inner join but000 as b on b~client  = a~client
+                                 and b~partner = a~partner
+                                 and b~type    = '2'
+                                 and b~xdele   = ''
+       where a~type     in lrg_typeid
+         and a~idnumber in lrg_ogrn_range.
+       if sy-subrc is initial.
+          lv_code = <fs_bankrupt_lst>-ogrn_num.
+       endif.
+    endif.
+***    if lt_partner[] is initial and ( <fs_bankrupt_lst>-category_code = 'SimplePerson' or
+***                                     <fs_bankrupt_lst>-category_code = 'AbsentBankrupt' ) and
+***       ( <fs_bankrupt_lst>-last_name is not initial and <fs_bankrupt_lst>-birthdt is not initial
+***                                                    and <fs_bankrupt_lst>-birthdt <> '00000000' ).
+* На тот случай, если ИП заведен без привязки с ФЛ. Тогда найдется банкротом только ИИ по ИНН.
+* Убераем ограничение на уже найденных партнеров. 11.04.2016 Симонов П.Н.
+    if ( <fs_bankrupt_lst>-category_code = 'SimplePerson' or <fs_bankrupt_lst>-category_code = 'AbsentBankrupt' ) and
+       ( <fs_bankrupt_lst>-last_name is not initial and <fs_bankrupt_lst>-birthdt is not initial
+                                                    and <fs_bankrupt_lst>-birthdt <> '00000000' ).
+       translate <fs_bankrupt_lst>-last_name   to upper case.
+       translate <fs_bankrupt_lst>-first_name  to upper case.
+       translate <fs_bankrupt_lst>-middle_name to upper case.
+*--->>> ubrr 13.05.2020 Севастьянов С.В. #69833 [19-69833] Загрузка данных по банкротству с сайта ЕФРСБ в SAP CRM
+     if <fs_bankrupt_lst>-last_name   cp '*Ё*' or <fs_bankrupt_lst>-last_name   cp '*Е*' or
+        <fs_bankrupt_lst>-first_name  cp '*Ё*' or <fs_bankrupt_lst>-first_name  cp '*Е*' or
+        <fs_bankrupt_lst>-middle_name cp '*Ё*' or <fs_bankrupt_lst>-middle_name cp '*Е*'.
+*
+       replace all occurrences of 'Ё' in <fs_bankrupt_lst>-last_name   with 'Е'.
+       replace all occurrences of 'Ё' in <fs_bankrupt_lst>-first_name  with 'Е'.
+       replace all occurrences of 'Ё' in <fs_bankrupt_lst>-middle_name with 'Е'.
+*
+       exec sql.
+         open rCursor for
+           select partner
+             from sapsr3.but000
+            where birthdt                       = :<fs_bankrupt_lst>-birthdt
+              and replace(mc_name1,   'Ё', 'Е') = :<fs_bankrupt_lst>-last_name
+              and replace(mc_name2,   'Ё', 'Е') = :<fs_bankrupt_lst>-first_name
+              and replace(namemiddle, 'Ё', 'Е') = :<fs_bankrupt_lst>-middle_name
+              and xdele                        != 'X'
+              and type                          = '1'
+       endexec.
+
+       do.
+         exec sql.
+           fetch next rCursor into :lv_partner
+         endexec.
+         if sy-subrc ne 0.
+            exec sql.
+              close rCursor
+            endexec.
+            exit.
+         endif.
+* Начало: Перед добавлением проверим есть ли на ДП такие данные как ИНН и СНИЛС
+         CALL FUNCTION 'ZFM_SSV_CHECK_BP_TAX_SNILS'
+           EXPORTING iv_partner    = lv_partner
+                     iv_snils_num  = <fs_bankrupt_lst>-snils_num
+                     iv_tax_num    = <fs_bankrupt_lst>-tax_num
+           IMPORTING ev_can_append = lv_can_append.
+* Конец: Перед добавлением проверим есть ли на ДП такие данные как ИНН и СНИЛС
+         if lv_can_append = 'X'.
+           append lv_partner to lt_partner.
+         endif.
+       enddo.
+     else.
+*---<<< ubrr 13.05.2020 Севастьянов С.В. #69833 [19-69833] Загрузка данных по банкротству с сайта ЕФРСБ в SAP CRM
+*--------------------------------------------------------------------*
+*--------------------------------------------------------------------*
+
+       clear lt_partner2.
+       select partner
+         appending table lt_partner2
+         from but000
+       where birthdt    = <fs_bankrupt_lst>-birthdt
+         and mc_name1   = <fs_bankrupt_lst>-last_name
+         and mc_name2   = <fs_bankrupt_lst>-first_name
+         and namemiddle = <fs_bankrupt_lst>-middle_name
+         and xdele      = ''
+         and type       = '1'.
+* Организуем проверку по ИНН и СНИЛС для найденных по ДР и ФИО
+       clear lv_can_append.
+       loop at lt_partner2 into lv_partner.
+* Начало: Перед добавлением проверим есть ли на ДП такие данные как ИНН и СНИЛС
+         CALL FUNCTION 'ZFM_SSV_CHECK_BP_TAX_SNILS'
+           EXPORTING iv_partner    = lv_partner
+                     iv_snils_num  = <fs_bankrupt_lst>-snils_num
+                     iv_tax_num    = <fs_bankrupt_lst>-tax_num
+           IMPORTING ev_can_append = lv_can_append.
+* Конец: Перед добавлением проверим есть ли на ДП такие данные как ИНН и СНИЛС
+         if lv_can_append = 'X'.
+           append lv_partner to lt_partner.
+         endif.
+       endloop.
+       clear lt_partner2.
+*--------------------------------------------------------------------*
+*--------------------------------------------------------------------*
+*--->>> ubrr 13.05.2020 Севастьянов С.В. #69833 [19-69833] Загрузка данных по банкротству с сайта ЕФРСБ в SAP CRM
+     endif.
+* Поиск по ФИО и адресу
+     if <fs_bankrupt_lst>-ADDRESS CP '*,*'.
+       CALL FUNCTION 'ZFM_SSV_PARSE_ADDRESS'
+         EXPORTING IV_ADDRESS     = <fs_bankrupt_lst>-ADDRESS
+         IMPORTING EV_POST_CODE   = LV_POST_CODE_TXT
+                   EV_REGION      = LV_REGION_TXT
+                   EV_CITY        = LV_CITY_TXT
+                   EV_STREET      = LV_STREET_TXT
+                   EV_HOUSE_NUM   = LV_HOUSE_NUM_TXT
+                   EV_ROOM_NUM    = LV_ROOM_NUM_TXT
+       .
+       CALL FUNCTION 'ZFM_SSV_FIND_DP_BY_ADDR'
+         EXPORTING iv_last_name   = <fs_bankrupt_lst>-last_name
+                   iv_first_name  = <fs_bankrupt_lst>-first_name
+                   iv_middle_name = <fs_bankrupt_lst>-middle_name
+                   IV_POST_CODE   = LV_POST_CODE_TXT
+                   IV_REGION      = LV_REGION_TXT
+                   IV_CITY        = LV_CITY_TXT
+                   IV_STREET      = LV_STREET_TXT
+                   IV_HOUSE_NUM   = LV_HOUSE_NUM_TXT
+                   IV_ROOM_NUM    = LV_ROOM_NUM_TXT
+         IMPORTING EV_PARTNER     = LV_PARTNER
+         EXCEPTIONS NO_DATA_FOUND = 4.
+       IF SY-SUBRC EQ 0.
+         append lv_partner to lt_partner.
+       ENDIF.
+     endif.
+*---<<< ubrr 13.05.2020 Севастьянов С.В. #69833 [19-69833] Загрузка данных по банкротству с сайта ЕФРСБ в SAP CRM
+    endif.
+    sort lt_partner.
+    delete adjacent duplicates from lt_partner.
+    if lt_partner[] is not initial.
+       lt_partner2[] = lt_partner[].
+       select partner
+         into table lt_partner
+         from but100
+         for all entries in lt_partner2
+       where partner = lt_partner2-table_line
+         and rltyp  in lrg_role.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+         CLEAR lt_partner2.
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+    endif.
+
+    clear: LT_BNT_FIND_LOG[], LS_BNT_FIND_LOG.
+    loop at lt_partner into lv_partner.
+      LS_BNT_FIND_LOG-PARTNER      = lv_partner.
+      LS_BNT_FIND_LOG-bankrupt_id  = <fs_bankrupt_lst>-bankruptid.
+      LS_BNT_FIND_LOG-changed_by   = sy-uname.
+      LS_BNT_FIND_LOG-changed_at   = lv_changed_at.
+      append LS_BNT_FIND_LOG to LT_BNT_FIND_LOG.
+    endloop.
+    modify ZTB_BNT_FIND_LOG from table LT_BNT_FIND_LOG.
+    commit work.
+
+    if lt_partner[] is initial and ( <fs_bankrupt_lst>-category_code = 'SimplePerson' or <fs_bankrupt_lst>-category_code = 'AbsentBankrupt' ).
+       append lv_empty to lt_partner.
+    endif.
+    if lt_partner[] is not initial.
+       if lv_code is initial.
+          lv_code = <fs_bankrupt_lst>-snils_num.
+       endif.
+       if lv_code is initial.
+          lv_code = <fs_bankrupt_lst>-tax_num.
+       endif.
+       if lv_code is initial.
+          lv_code = <fs_bankrupt_lst>-ogrn_num.
+       endif.
+       lv_id = <fs_bankrupt_lst>-bankruptid.
+       if <fs_bankrupt_lst>-last_msg_date is not initial and
+          <fs_bankrupt_lst>-last_msg_date <> '00000000'.
+          concatenate <fs_bankrupt_lst>-last_msg_date(4) '-'
+                      <fs_bankrupt_lst>-last_msg_date+4(2) '-'
+                      <fs_bankrupt_lst>-last_msg_date+6(2)
+                      'T00:00:00'
+            into lv_begdt.
+       endif.
+       CALL METHOD zcl_sim_bankrupt_context=>get_xmltab
+         EXPORTING
+           iv_metod  = 'GetDebtorMessagesContentForPeriodByIdBankrupt'
+           iv_ident  = lv_id
+           iv_begdt  = lv_begdt
+         IMPORTING
+           et_xmltab = lt_xmltab
+           ev_result = lv_result.
+
+       if lv_result = 'OK'.
+          CALL METHOD zcl_sim_bankrupt_context=>parse_xmltab
+            EXPORTING
+              iv_param  = 'ArbitrManager'
+              it_xmltab = lt_xmltab
+            IMPORTING
+              es_arbitr = ls_arbitr
+              es_sro    = ls_sro.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+          CLEAR lt_xmltab.
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+       endif.
+       if lv_result = 'OK' and ls_arbitr is not initial.
+          lv_debtortype = 'Organizations'.
+          if <fs_bankrupt_lst>-category_code = 'EnterpreneurPerson' or
+             <fs_bankrupt_lst>-category_code = 'FarmerPerson' or
+             <fs_bankrupt_lst>-category_code = 'SimplePerson' or
+             ( <fs_bankrupt_lst>-category_code = 'AbsentBankrupt' and
+               ( <fs_bankrupt_lst>-ogrn_num is initial or
+                 strlen( <fs_bankrupt_lst>-ogrn_num ) = 15 or
+                 strlen( <fs_bankrupt_lst>-tax_num ) = 12
+               )
+             ).
+             lv_debtortype = 'Persons'.
+          endif.
+          select single bankrupt_link
+            into ls_arbitr-bankrupt_link
+            from ztb_bankrupt_arb
+          where bankruptid = <fs_bankrupt_lst>-bankruptid.
+          get time stamp field ls_arbitr-change_date.
+          if ls_arbitr-bankrupt_link is initial and lv_code is not initial.
+*Нас начали блочить из-за большого кол-ва обращений на внешний сервис. Внутреннего у них нет.
+*--->>> 08.06.2020 Кириченко Н.А. [IM2480980-001] SAP CRM. Программа банкротов ZP_SIM_BANKRUPT*.
+*             CALL METHOD zcl_sim_bankrupt_context=>get_linkline
+*               EXPORTING
+*                 iv_debtortype  = lv_debtortype
+*                 iv_code        = lv_code
+*               IMPORTING
+*                 ev_link   = ls_arbitr-bankrupt_link
+*                 ev_result = lv_result.
+*             if ls_arbitr-bankrupt_link cp '*4FE45A5D3D2234DBCF84964C107E0AE3*'.
+*                clear ls_arbitr-bankrupt_link.
+*                if <fs_bankrupt_lst>-ogrn_num is not initial and lv_code <> <fs_bankrupt_lst>-ogrn_num.
+*                   lv_code = <fs_bankrupt_lst>-ogrn_num.
+*                   CALL METHOD zcl_sim_bankrupt_context=>get_linkline
+*                     EXPORTING
+*                       iv_debtortype  = lv_debtortype
+*                       iv_code        = lv_code
+*                     IMPORTING
+*                       ev_link   = ls_arbitr-bankrupt_link
+*                       ev_result = lv_result.
+*                endif.
+*             endif.
+*             if ls_arbitr-bankrupt_link cp '*4FE45A5D3D2234DBCF84964C107E0AE3*'.
+*                clear ls_arbitr-bankrupt_link.
+*             endif.
+*---<<< 08.06.2020 Кириченко Н.А. [IM2480980-001] SAP CRM. Программа банкротов ZP_SIM_BANKRUPT*.
+          endif.
+
+          loop at lt_partner into lv_partner.
+            clear: lv_message, ls_bankrupt, ls_yztb_bankrupt,
+                   lt_xztb_bankrupt[], lt_yztb_bankrupt[],
+                   lv_partner_arbitr, ls_arbitr_old, ls_bankrupt.
+            if lv_partner <> lv_empty.
+               delete from ztb_bankrupt_arb
+                 where partner    = lv_empty
+                   and bankruptid = <fs_bankrupt_lst>-bankruptid.
+               delete from ztb_bankrupt_arb
+                 where partner    = lv_partner
+                   and bankruptid = lv_bankrupt_empty.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+               commit work.
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+            endif.
+            select single *
+              into ls_arbitr_old
+              from ztb_bankrupt_arb
+            where partner    = lv_partner
+              and bankruptid = <fs_bankrupt_lst>-bankruptid.
+            ls_arbitr-partner    = lv_partner.
+            ls_arbitr-bankruptid = <fs_bankrupt_lst>-bankruptid.
+
+            if ls_arbitr_old-messageid = ls_arbitr-messageid.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+               commit work.
+               delete lt_partner where table_line = lv_partner.
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+               continue.
+            endif.
+
+            if ls_arbitr_old-show_reestr is initial.
+               select single bpkind
+                 into lv_bpkind
+                 from but000 as b
+                   inner join but100 as f on f~mandt   = b~client
+                                         and f~partner = b~partner
+               where b~partner = lv_partner
+                 and b~type    = '2'
+                 and b~bpkind  = '0002'
+                 and f~rltyp  in lrg_role.
+
+               if sy-subrc is initial.
+                  CALL METHOD zcl_sim_bankrupt_context=>get_product_count
+                    EXPORTING
+                      iv_partner     = lv_partner
+                    RECEIVING
+                      rv_result      = lv_count.
+                  if lv_count > 0.
+                     ls_arbitr-show_reestr = 'X'.
+                  endif.
+               endif.
+            else.
+               ls_arbitr-show_reestr = ls_arbitr_old-show_reestr.
+            endif.
+*--->>> 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+            clear: lv_result, ls_arbitr-kf_id.
+            if lv_partner <> lv_empty and p_test is initial and
+               ( <fs_bankrupt_lst>-tax_num is not initial or
+                 <fs_bankrupt_lst>-ogrn_num is not initial ).
+
+               select single bpkind
+                 into lv_bpkind
+                 from but000 as b
+                   inner join but100 as f on f~mandt   = b~client
+                                         and f~partner = b~partner
+               where b~partner = lv_partner
+                 and b~type    = '2'
+                 and f~rltyp  in lrg_role.
+               if sy-subrc is initial.
+                  CALL METHOD zcl_sim_bankrupt_context=>get_kf
+                    EXPORTING
+                      iv_ogrn       = <fs_bankrupt_lst>-ogrn_num
+                      iv_inn        = <fs_bankrupt_lst>-tax_num
+                    IMPORTING
+                      ev_kf_id      = ls_arbitr-kf_id
+                      ev_result     = lv_result.
+               endif.
+            endif.
+*---<<< 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+            modify ztb_bankrupt_arb from ls_arbitr.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+            commit work.
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+            lv_message = <fs_bankrupt_lst>-bankruptid.
+            concatenate 'Найден ДП <' lv_partner '>. БанкротID <' lv_message '>'
+              into lv_message.
+*--->>> 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+*            lv_kf_id = ls_arbitr-kf_id.">>><<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+            if ls_arbitr-kf_id is not initial.
+               concatenate lv_message
+                           '. Фаза из Контур.Фокус <' lv_result '>'
+                 into lv_message.
+            endif.
+*---<<< 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+            write: / lv_message.
+            if lv_partner <> lv_empty.
+               if p_test is initial.
+                  CALL METHOD zcl_sim_bankrupt_context=>create_arbitr
+                    EXPORTING
+                      is_arbitr      = ls_arbitr
+                      is_sro         = ls_sro
+                      iv_partner     = lv_partner
+                    IMPORTING
+                      ev_partner     = lv_partner_arbitr
+                      ev_result      = lv_result.
+               endif.
+
+               select single partner bankrupt_type
+                 into corresponding fields of ls_bankrupt
+                 from ztb_bankrupt
+               where partner = lv_partner.
+
+               if sy-subrc is initial.
+                  lv_message = ls_bankrupt-bankrupt_type.
+                  concatenate 'У ДП <' lv_partner '> текущая фаза <' lv_message '>'
+                    into lv_message.
+                  write: /5 lv_message.
+               elseif p_test is initial.
+                 try.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+**--->>> 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+*                   if lv_kf_id is not initial.
+*                      clear lv_bankrupt_type_kf.
+*                      select single bankrupt_type
+*                        into lv_bankrupt_type_kf
+*                        from ztb_bankrupt_kf
+*                      where kf_id = lv_kf_id.
+*                   endif.
+**---<<< 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+                   select zzuoa
+                     into corresponding fields of table lt_zbut
+                     from zbut0000000001
+                   where partner    = lv_partner
+                     and zzniuoltpa = 'BUH'
+                     and zzaouuaaui = 'X'.
+                   sort lt_zbut by zzuoa.
+                   delete adjacent duplicates from lt_zbut comparing zzuoa.
+                   delete lt_zbut where zzuoa is initial.
+                   if lt_zbut[] is not initial.
+                      zcl_dm_drkk_acc_util=>zconnectbuh( exporting iv_connect_or_disconnect = 'CONNECT'
+                                                         importing ev_result  = lv_result_con
+                                                                   ev_comment = lv_comment_str_con ).
+                      if lv_result_con = 'OK'.
+                         lv_category = 300.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+*--->>> 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+                         lv_group    = 90.
+*                         clear lv_group.
+*                         if lv_kf_id is not initial and lv_bankrupt_type_kf is not initial.
+*                            try .
+*                              lv_group = lv_bankrupt_type_kf.
+*                            catch cx_root.
+*                            endtry.
+*                         endif.
+*                         if lv_group is initial.
+*                            lv_group = 90.
+*                         endif.
+*---<<< 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+                         loop at lt_zbut into ls_zbut.
+                           exec sql.
+                             execute procedure
+                               ubrr_dm_crm_getabs.set_catgrp_4_cli(
+                                 in :ls_zbut-zzuoa,
+                                 in :lv_category,
+                                 in :lv_group,
+                                 in :sy-uname )
+                           endexec.
+                         endloop.
+                         lv_message = lv_group.
+                         concatenate 'установлена категория/группа 300/' lv_message
+                           into lv_message.
+                         concatenate 'На ДП' lv_partner
+                                     lv_message
+                           into lv_message separated by space.
+                         exec sql.
+                           set connection default
+                         endexec.
+
+                      endif.
+                   else.
+                      concatenate 'У ДП '  lv_partner
+                                  'нет клиента в АБС'
+                        into lv_message separated by space.
+                   endif.
+                 catch cx_sy_native_sql_error into lr_error_sql.
+                   lv_message = lr_error_sql->sqlmsg.
+                 catch cx_root into lr_error.
+                   lv_message = lr_error->if_message~get_longtext( ).
+                 endtry.
+                 write: /5 lv_message.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+**--->>> 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+*                 if lv_kf_id is not initial and lv_bankrupt_type_kf is not initial.
+*                    try .
+*                      lv_group = lv_bankrupt_type_kf.
+*                    catch cx_root.
+*                    endtry.
+*                 endif.
+*                 if lv_group is initial.
+*                    lv_group = 90.
+*                 endif.
+**---<<< 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+                 ls_bankrupt-partner       = lv_partner.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+                 ls_bankrupt-bankrupt_type = 90.
+*                 ls_bankrupt-bankrupt_type = lv_group. "90. " 14.02.2019 Симонов #59648 [18-264] SAP CRM: Признак банкрота из Контур-фокус
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+                 ls_bankrupt-changed_by    = sy-uname.
+                 ls_bankrupt-changed_at    = lv_changed_at.
+                 modify ztb_bankrupt from ls_bankrupt.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+                 commit work.
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+                 zcl_sim_bankrupt_context=>send_email( ls_bankrupt ).
+
+                 concatenate 'ДП '  lv_partner
+                             'внесен в CRM с фазой "Появился в реестре банкротов"'
+                   into lv_message separated by space.
+                 write: /5 lv_message.
+
+                 ls_yztb_bankrupt-kz = 'U'.
+                 ls_yztb_bankrupt-client  = '300'.
+                 ls_yztb_bankrupt-partner = lv_partner.
+                 append ls_yztb_bankrupt to lt_yztb_bankrupt.
+
+                 move-corresponding ls_bankrupt to ls_yztb_bankrupt.
+                 ls_yztb_bankrupt-kz = 'U'.
+                 append ls_yztb_bankrupt to lt_xztb_bankrupt.
+                 lv_objectid = lv_partner.
+                 CALL FUNCTION 'ZSIM_CDO_BNKROT_WRITE_DOCUMENT'
+                   EXPORTING
+                     objectid                   = lv_objectid
+                     tcode                      = sy-tcode
+                     utime                      = sy-uzeit
+                     udate                      = sy-datum
+                     username                   = sy-uname
+                     planned_change_number      = space
+                     object_change_indicator    = 'U'
+                     planned_or_real_changes    = space
+                     no_change_pointers         = space
+                     upd_icdtxt_zsim_cdo_bnkrot = 'U'
+                     upd_ztb_bankrupt           = 'U'
+                   TABLES
+                     icdtxt_zsim_cdo_bnkrot     = lt_cdtxt
+                     xztb_bankrupt              = lt_xztb_bankrupt
+                     yztb_bankrupt              = lt_yztb_bankrupt.
+               endif.
+               if lv_partner_arbitr is not initial.
+                  select single *
+                    into ls_proxy
+                    from zubrr_dm_proxy
+                  where partner1 = lv_partner
+                    and partner2 = lv_partner_arbitr
+                    and date_to >= sy-datum
+                    and reltyp   = 'ZKK19'.
+                  if sy-subrc is not initial.
+                     " Надо бы всем старым управляющим дату изменить
+                     select *
+                       into corresponding fields of table lt_proxy_old
+                       from zubrr_dm_proxy
+                     where partner1   = lv_partner
+                       and date_to   >= sy-datum
+                       and reltyp     = 'ZKK19'
+                       and zproxypost = '19'.
+                     loop at lt_proxy_old into ls_proxy_old.
+                       " По идее надо читать определение суда и смотреть там дату
+                       " но у нас нет такой технической возможности :)
+                       ls_proxy_old-zdocument_end_dt = sy-datum - 1.
+                       modify zubrr_dm_proxy from ls_proxy_old.
+                     endloop.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+                     CLEAR lt_proxy_old.
+                     commit work.
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+                     select max( relnr )
+                       into ls_proxy-relnr
+                     from zubrr_dm_proxy.
+                     ls_proxy-relnr        = ls_proxy-relnr + 1.
+                     CALL FUNCTION 'CONVERSION_EXIT_ALPHA_INPUT'
+                       EXPORTING
+                         input  = ls_proxy-relnr
+                       IMPORTING
+                         output = ls_proxy-relnr.
+                     ls_proxy-partner1         = lv_partner.
+                     ls_proxy-partner2         = lv_partner_arbitr.
+                     ls_proxy-date_to          = '99991231'.
+                     ls_proxy-date_from        = sy-datum.
+                     ls_proxy-reltyp           = 'ZKK19'.
+                     ls_proxy-zproxypost       = '19'.
+                     ls_proxy-zpostdocument    = 'E'.
+                     ls_proxy-zdocument_num    = ls_arbitr-casenumber.
+                     ls_proxy-zdocument_date   = sy-datum.
+                     ls_proxy-zdocument_end_dt = '99991231'.
+                     ls_proxy-zindividual_org  =  'A'.
+                     ls_proxy-zassumption_date = sy-datum.
+                     modify zubrr_dm_proxy from ls_proxy.
+                     CALL FUNCTION 'ZDM_PROXY_SET_STATUS'
+                       EXPORTING
+                         iv_partner        = ''
+                         iv_status         = ''
+                         iv_index          = 0
+                         iv_display_mode   = ''.
+
+                     concatenate 'ДП ' lv_partner
+                                 'связали с арбитражным управляющим' lv_partner_arbitr
+                       into lv_message separated by space.
+                     write: /5 lv_message.
+
+                  endif.
+               endif.
+            endif.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+            commit work.
+            delete lt_partner WHERE table_line = lv_partner.
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+          endloop.
+       endif.
+    endif.
+*--->>>20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+    CLEAR <fs_bankrupt_lst>.
+*---<<<20.05.2020 Кириченко Н.А.  #75110 [IM2480980-001] SAP CRM. Программа банкрот
+  endloop.
+  commit work.
