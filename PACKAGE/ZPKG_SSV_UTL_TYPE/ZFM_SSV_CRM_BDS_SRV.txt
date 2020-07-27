@@ -1,0 +1,131 @@
+﻿FUNCTION ZFM_SSV_CRM_BDS_SRV.
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"  IMPORTING
+*"     VALUE(IV_DOC_KEY) TYPE  STRING
+*"  EXPORTING
+*"     VALUE(EV_PHOTO) TYPE  STRING
+*"----------------------------------------------------------------------
+  data: lv_doc_key        type text255,
+        lv_date_create    type text20,
+        lv_type           type text40,
+        lv_anketa_id      type text40,
+        lv_conn           type text255,
+        lr_doc            type ref to cl_crm_documents,
+        lt_content        type sdokcntbins,
+        ls_data           type sdokcntbin,
+        lv_xstring        type xstring,
+        lv_html_xstring   type xstring,
+        lv_photo_exists   type char1,
+        lv_io             type skwf_io.
+
+*--->>> ubrr 15.07.2020 Севастьянов С.В. [20-71104] Построение внутренней биометрии (часть 2). Выгрузка справок о доходах
+  data: ls_soap_srv_log    type ztb_soap_srv_log,
+        lt_soap_srv_log    type standard table of ztb_soap_srv_log,
+        lv_log_delete_date type d,
+        lv_ups_value       type zubrr_upsvalue,
+        lv_time1           type i,
+        lv_time2           type i.
+
+  get run time field lv_time1.
+
+  ls_soap_srv_log-change_date = sy-datum.
+  ls_soap_srv_log-change_time = sy-uzeit.
+  ls_soap_srv_log-user_name   = sy-uname.
+  move iv_doc_key to ls_soap_srv_log-dockey.
+  modify ztb_soap_srv_log from ls_soap_srv_log.
+  commit work.
+*---<<< ubrr 15.07.2020 Севастьянов С.В. [20-71104] Построение внутренней биометрии (часть 2). Выгрузка справок о доходах
+
+** Убрал из сервиса обращение к вкладам в соотв с договоренностью
+**  lv_conn = zcl_jsp_connect=>con_name.
+**
+**  exec sql.
+**    set connection :lv_conn
+**  endexec.
+
+*  exec sql.
+*    open cFolders for
+*      select nvl (to_char (to_date (nullif (:iv_zdocdate, '00000000'), 'yyyymmdd') + h.srok, 'yyyymmdd'), '00000000')
+*        from ubrr_saa_anketascan_type h
+*       where h.folder = :iv_folder
+*  endexec.
+
+**  exec sql.
+**    open cFolders for
+**      select doc_key, to_char(date_create, 'YYYYMMDD'), FOLDER, ANKETA_ID
+**        from ubrr_saa_anketascan_file h
+**       where h.scan_id = :IV_SCAN_ID
+**  endexec.
+
+**  do.
+**    exec sql.
+**      fetch next cFolders into :lv_doc_key, :lv_date_create, :lv_type, :lv_anketa_id
+**    endexec.
+**    if sy-subrc eq 0.
+**    else.
+**      exec sql.
+**        close cFolders
+**      endexec.
+**      exit.
+**    endif.
+**  enddo.
+
+  clear lv_photo_exists.
+  create object lr_doc.
+  move iv_doc_key to lv_doc_key.
+  split lv_doc_key at '#' into lv_io-objtype lv_io-class lv_io-objid.
+  call method lr_doc->get_document( exporting io = lv_io importing content_bin = lt_content ).
+  if lt_content[] is not initial.
+    loop at lt_content into ls_data.
+      move ls_data-line to lv_xstring.
+      concatenate lv_html_xstring lv_xstring into lv_html_xstring
+                                               in byte mode.
+      lv_photo_exists = 'X'.
+    endloop.
+  endif.
+
+  if lv_photo_exists = 'X'.
+**    MOVE lv_date_create TO EV_ANKETA_CREATE_DATE.
+**    MOVE lv_type        TO EV_TYPE.
+**    MOVE lv_anketa_id   TO EV_ANKETA_ID.
+**    EV_DATETIMEADDFOTO = EV_ANKETA_CREATE_DATE.
+    CALL FUNCTION 'SCMS_BASE64_ENCODE_STR'
+      EXPORTING
+        input  = lv_html_xstring
+      IMPORTING
+         output = ev_photo. " lv_base64.
+  endif.
+
+*--->>> ubrr 15.07.2020 Севастьянов С.В. [20-71104] Построение внутренней биометрии (часть 2). Выгрузка справок о доходах
+  get run time field lv_time2.
+* Calculate the difference.
+  lv_time2                   = lv_time2 - lv_time1.
+  ls_soap_srv_log-dtime      = lv_time2.
+  ls_soap_srv_log-pict_exist = lv_photo_exists.
+  modify ztb_soap_srv_log from ls_soap_srv_log.
+  commit work.
+
+* Читаем настройку кол-во дней хран логов
+  select single cupsvalue
+    into lv_ups_value
+    from zubrr_ups
+   where cupspref = 'SRV_BDS_COUNT_DAY_LOG'
+     and cupsuser = 'ALL'.
+  if sy-subrc eq 0.
+  else.
+    lv_ups_value = '28'.
+  endif.
+
+  if lv_ups_value > 0.
+    lv_log_delete_date = sy-datum - lv_ups_value.
+    select *
+      into table lt_soap_srv_log
+      from ztb_soap_srv_log
+     where change_date < lv_log_delete_date.
+    delete ztb_soap_srv_log from table lt_soap_srv_log.
+    commit work.
+  endif.
+*---<<< ubrr 15.07.2020 Севастьянов С.В. [20-71104] Построение внутренней биометрии (часть 2). Выгрузка справок о доходах
+
+ENDFUNCTION.
