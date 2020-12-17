@@ -1,13 +1,13 @@
-FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
+п»їFUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
 *"----------------------------------------------------------------------
-*"*"Локальный интерфейс:
+*"*"Р›РѕРєР°Р»СЊРЅС‹Р№ РёРЅС‚РµСЂС„РµР№СЃ:
 *"  IMPORTING
 *"     REFERENCE(IV_PARTNER) TYPE  BU_PARTNER
 *"     REFERENCE(IV_ANKETA_ID) TYPE  CHAR20
 *"  EXPORTING
 *"     REFERENCE(EV_NEED_UPD_DATA) TYPE  CHAR1
 *"----------------------------------------------------------------------
-** ubrr 30.11.2020 Севастьянов С.В. [20-81088] Обнуление лимита при изменении персональных данных в карточке ДП.
+** ubrr 30.11.2020 РЎРµРІР°СЃС‚СЊСЏРЅРѕРІ РЎ.Р’. [20-81088] РћР±РЅСѓР»РµРЅРёРµ Р»РёРјРёС‚Р° РїСЂРё РёР·РјРµРЅРµРЅРёРё РїРµСЂСЃРѕРЅР°Р»СЊРЅС‹С… РґР°РЅРЅС‹С… РІ РєР°СЂС‚РѕС‡РєРµ Р”Рџ.
 *"----------------------------------------------------------------------
   DATA: lv_anketa_id             TYPE crmt_object_id,
         lv_ishypothec            TYPE char1.
@@ -130,18 +130,18 @@ FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
            ELSEIF SY-SUBRC NE 0.
              CONTINUE.
            ENDIF.
-* Преобразование данных
-* СЕРИЯ ПАСПОРТА
+* РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ РґР°РЅРЅС‹С…
+* РЎР•Р РРЇ РџРђРЎРџРћР РўРђ
            MOVE lv_anketa_seriespassport TO lv_seriespassport.
-* НОМЕР ПАСПОРТА
+* РќРћРњР•Р  РџРђРЎРџРћР РўРђ
            MOVE lv_anketa_numberpassport TO lv_numberpassport.
-* ДАТА ВЫДАЧИ ПАСПОРТА
+* Р”РђРўРђ Р’Р«Р”РђР§Р РџРђРЎРџРћР РўРђ
            MOVE lv_anketa_datepassport   TO lv_entry_date.
-* СНИЛС
+* РЎРќРР›РЎ
            MOVE lv_anketa_numberstateinc TO lv_numberstateinc.
-* ИНН
+* РРќРќ
            MOVE lv_anketa_inn            TO lv_taxnum.
-* Проверка пасспортных данных
+* РџСЂРѕРІРµСЂРєР° РїР°СЃСЃРїРѕСЂС‚РЅС‹С… РґР°РЅРЅС‹С…
            IF ev_need_upd_data NE 'X'.
              SELECT SINGLE ZZAFLD000012 IDNUMBER ENTRY_DATE
                INTO (lv_seriespassport_bp, lv_passportnum_bp, lv_entry_date_bp)
@@ -164,7 +164,7 @@ FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
                ev_need_upd_data = 'X'.
              ENDIF.
            ENDIF.
-* Проверка на СНИЛС
+* РџСЂРѕРІРµСЂРєР° РЅР° РЎРќРР›РЎ
            IF ev_need_upd_data NE 'X'.
              SELECT SINGLE IDNUMBER
                INTO lv_sinlsnum_bp
@@ -176,7 +176,7 @@ FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
                ev_need_upd_data = 'X'.
              ENDIF.
            ENDIF.
-* Проверка на соотв ИНН
+* РџСЂРѕРІРµСЂРєР° РЅР° СЃРѕРѕС‚РІ РРќРќ
            IF ev_need_upd_data NE 'X' and lv_taxnum IS NOT INITIAL.
              IF lv_client_type EQ '1'.
                SELECT SINGLE a~TAXNUM
