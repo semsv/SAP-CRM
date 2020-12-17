@@ -1,0 +1,217 @@
+FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"  IMPORTING
+*"     REFERENCE(IV_PARTNER) TYPE  BU_PARTNER
+*"     REFERENCE(IV_ANKETA_ID) TYPE  CHAR20
+*"  EXPORTING
+*"     REFERENCE(EV_NEED_UPD_DATA) TYPE  CHAR1
+*"----------------------------------------------------------------------
+** ubrr 30.11.2020 Севастьянов С.В. [20-81088] Обнуление лимита при изменении персональных данных в карточке ДП.
+*"----------------------------------------------------------------------
+  DATA: lv_anketa_id             TYPE crmt_object_id,
+        lv_ishypothec            TYPE char1.
+
+  DATA: lv_anketa_fam            TYPE text255,
+        lv_anketa_im             TYPE text255,
+        lv_anketa_ot             TYPE text255,
+        lv_anketa_seriespassport TYPE text255,
+        lv_anketa_numberpassport TYPE text255,
+        lv_anketa_datepassport   TYPE text255,
+        lv_anketa_inn            TYPE text255,
+        lv_anketa_numberstateinc TYPE text255.
+
+  DATA: lr_expt_nsql             TYPE REF TO cx_sy_native_sql_error,
+        lv_err                   TYPE text1024,
+        lv_msg                   TYPE string.
+
+  DATA: lv_first_name            TYPE bu_namep_f,
+        lv_last_name             TYPE bu_namep_l,
+        lv_middlename            TYPE bu_namemid,
+        lv_seriespassport        TYPE zadtel00001t,
+        lv_numberpassport        TYPE bu_id_number,
+        lv_numberstateinc        TYPE bu_id_number,
+        lv_entry_date            TYPE bu_id_entry_date,
+        lv_taxnum                TYPE bptaxnum,
+        lv_sinlsnum_bp           TYPE bu_id_number,
+        lv_passportnum_bp        TYPE bu_id_number,
+        lv_seriespassport_bp     TYPE zadtel00001t,
+        lv_entry_date_bp         TYPE bu_id_entry_date,
+        lv_taxnum_bp             TYPE bptaxnum,
+        lv_partner               TYPE bu_partner,
+        lv_client_type           TYPE bu_type.
+
+  CLEAR ev_need_upd_data.
+
+  IF zcl_jsp_connect=>con_name IS INITIAL.
+    zcl_util_dm_oltp=>zconnect_oltp( EXPORTING iv_connect_or_disconnect = 'CONNECT'
+                                               iv_con_name              = 'UVKL'
+                                    ).
+  ELSE.
+    EXEC SQL.
+      set connection :zcl_jsp_connect=>con_name
+    ENDEXEC.
+  ENDIF.
+
+  EXEC SQL.
+     open curA for
+     select anketa_id
+       from ubrr_vdata.ubrr_scoring_anketa
+      where bp_id     = ltrim(:iv_partner, '0')
+        and anketa_id = :iv_anketa_id
+  ENDEXEC.
+
+  DO.
+    TRY.
+      EXEC SQL.
+        fetch next curA into :lv_anketa_id
+      ENDEXEC.
+    CATCH cx_sy_native_sql_error  INTO lr_expt_nsql.
+      lv_msg = lr_expt_nsql->sqlmsg.
+      lv_err = '-1'.
+      EXIT.
+    ENDTRY.
+    IF SY-SUBRC <> 0.
+      EXEC SQL.
+        close curA
+      ENDEXEC.
+      EXIT.
+    ELSE.
+      EXEC SQL.
+        select 'X'
+          into :lv_ishypothec
+          from ubrr_scoring_cb_anketa
+         where anketa_id  = :lv_anketa_id
+           and crmproduct = 'P095'
+      ENDEXEC.
+      IF SY-SUBRC NE 0 OR lv_ishypothec NE 'X'.
+        EXEC SQL.
+          select anketa_fam,
+                 anketa_im,
+                 anketa_ot,
+                 anketa_seriespassport,
+                 anketa_numberpassport,
+                 to_char(anketa_datepassport, 'YYYYMMDD'),
+                 anketa_inn,
+                 anketa_numberstateinc
+            into :lv_anketa_fam,
+                 :lv_anketa_im,
+                 :lv_anketa_ot,
+                 :lv_anketa_seriespassport,
+                 :lv_anketa_numberpassport,
+                 :lv_anketa_datepassport,
+                 :lv_anketa_inn,
+                 :lv_anketa_numberstateinc
+            from ubrr_vdata.ubrr_scoring_anketa
+           where anketa_id = :lv_anketa_id
+         ENDEXEC.
+         IF SY-SUBRC EQ 0.
+           SELECT SINGLE NAME_FIRST NAME_LAST NAMEMIDDLE TYPE
+             INTO (lv_first_name, lv_last_name, lv_middlename, lv_client_type)
+             FROM BUT000
+            WHERE PARTNER = IV_PARTNER.
+           IF SY-SUBRC EQ 0 AND
+              ( lv_first_name NE lv_anketa_im  OR
+                lv_last_name  NE lv_anketa_fam OR
+                lv_middlename NE lv_anketa_ot
+              ).
+             ev_need_upd_data = 'X'.
+           ELSEIF SY-SUBRC NE 0.
+             CONTINUE.
+           ENDIF.
+* Преобразование данных
+* СЕРИЯ ПАСПОРТА
+           MOVE lv_anketa_seriespassport TO lv_seriespassport.
+* НОМЕР ПАСПОРТА
+           MOVE lv_anketa_numberpassport TO lv_numberpassport.
+* ДАТА ВЫДАЧИ ПАСПОРТА
+           MOVE lv_anketa_datepassport   TO lv_entry_date.
+* СНИЛС
+           MOVE lv_anketa_numberstateinc TO lv_numberstateinc.
+* ИНН
+           MOVE lv_anketa_inn            TO lv_taxnum.
+* Проверка пасспортных данных
+           IF ev_need_upd_data NE 'X'.
+             SELECT SINGLE ZZAFLD000012 IDNUMBER ENTRY_DATE
+               INTO (lv_seriespassport_bp, lv_passportnum_bp, lv_entry_date_bp)
+               FROM BUT0ID
+              WHERE PARTNER      = IV_PARTNER
+                AND ZZAFLD000014 = 'X'
+                AND TYPE         = '21'
+                .
+             IF SY-SUBRC          NE 0 AND
+                ( lv_seriespassport IS NOT INITIAL OR
+                  lv_numberpassport IS NOT INITIAL OR
+                  lv_entry_date     IS NOT INITIAL
+                )
+                OR
+                SY-SUBRC          EQ 0 AND
+                ( lv_seriespassport_bp NE lv_seriespassport OR
+                  lv_passportnum_bp    NE lv_numberpassport OR
+                  lv_entry_date_bp     NE lv_entry_date
+                ).
+               ev_need_upd_data = 'X'.
+             ENDIF.
+           ENDIF.
+* Проверка на СНИЛС
+           IF ev_need_upd_data NE 'X'.
+             SELECT SINGLE IDNUMBER
+               INTO lv_sinlsnum_bp
+               FROM BUT0ID
+              WHERE PARTNER    = IV_PARTNER
+                AND TYPE       = '83'.
+             IF SY-SUBRC NE 0 AND lv_numberstateinc  IS NOT INITIAL OR
+                SY-SUBRC EQ 0 AND lv_sinlsnum_bp     NE lv_numberstateinc.
+               ev_need_upd_data = 'X'.
+             ENDIF.
+           ENDIF.
+* Проверка на соотв ИНН
+           IF ev_need_upd_data NE 'X' and lv_taxnum IS NOT INITIAL.
+             IF lv_client_type EQ '1'.
+               SELECT SINGLE a~TAXNUM
+                 INTO lv_taxnum_bp
+                 FROM dfkkbptaxnum AS a
+                INNER JOIN but000 AS b
+                   ON b~client  = a~client
+                  AND b~partner = a~partner
+                  AND b~type    = '1'
+                  AND b~xdele   = ''
+                WHERE a~taxtype = 'RU1'
+                  AND b~partner EQ iv_partner.
+             ELSE.
+               SELECT SINGLE a~TAX_NUM
+                 INTO lv_taxnum_bp
+                 FROM zubrr_dm_taxnuml AS a
+                INNER JOIN but000 AS b
+                   ON b~client  = a~client
+                  AND b~partner = a~partner
+                  AND b~type    = '2'
+                  AND b~xdele   = ''
+                WHERE b~partner EQ iv_partner.
+             ENDIF.
+             IF SY-SUBRC NE 0 AND lv_taxnum    IS NOT INITIAL OR
+                SY-SUBRC EQ 0 AND lv_taxnum_bp NE lv_taxnum.
+               ev_need_upd_data = 'X'.
+             ENDIF.
+           ENDIF.
+
+           IF ev_need_upd_data EQ 'X'.
+             EXEC SQL.
+               close curA
+             ENDEXEC.
+             EXIT.
+           ENDIF.
+         ENDIF.
+      ELSE.
+        CLEAR lv_ishypothec.
+      ENDIF.
+    ENDIF.
+  ENDDO.
+
+
+
+  EXEC SQL.
+    set connection default
+  ENDEXEC.
+
+ENDFUNCTION.
