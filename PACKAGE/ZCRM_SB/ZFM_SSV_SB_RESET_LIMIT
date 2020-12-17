@@ -1,0 +1,102 @@
+FUNCTION ZFM_SSV_SB_RESET_LIMIT.
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"  IMPORTING
+*"     REFERENCE(IV_PARTNER) TYPE  BU_PARTNER
+*"----------------------------------------------------------------------
+ "* ubrr 30.11.2020 Севастьянов С.В. [20-81088] Обнуление лимита при изменении персональных данных в карточке ДП.
+*"----------------------------------------------------------------------
+  DATA: lv_anketa_id     TYPE crmt_object_id,
+        lv_delete_fixlim TYPE char1,
+        lv_ups_value     TYPE zubrr_upsvalue.
+
+  SELECT SINGLE CUPSVALUE
+    INTO lv_ups_value
+    FROM ZUBRR_UPS
+   WHERE CUPSPREF = 'FM_SB_RESET_LIMIT_OFF'
+     AND CUPSUSER = 'ALL'.
+
+  IF SY-SUBRC     EQ 0   AND
+     lv_ups_value EQ 'X'
+  .
+    RETURN.
+  ENDIF.
+
+  IF zcl_jsp_connect=>con_name IS INITIAL.
+    ZCL_UTIL_DM_OLTP=>ZCONNECT_OLTP( EXPORTING IV_CONNECT_OR_DISCONNECT = 'CONNECT'
+                                               IV_CON_NAME              = 'UVKL'
+                                   ).
+  ELSE.
+    EXEC SQL.
+      SET CONNECTION :zcl_jsp_connect=>con_name
+    ENDEXEC.
+  ENDIF.
+
+  EXEC SQL.
+     open curAnk for
+     select ANKETA_ID
+       from ubrr_vdata.ubrr_scoring_anketa
+      where bp_id = ltrim(:IV_PARTNER, '0')
+        and ANKETA_STATUS_CRED not in (3, 6, 7, 8, 9, 12)
+  ENDEXEC.
+
+  CLEAR lv_delete_fixlim.
+  DO.
+    EXEC SQL.
+      fetch next curAnk into :lv_anketa_id
+    ENDEXEC.
+    IF sy-subrc <> 0.
+      EXEC SQL.
+        close curAnk
+      ENDEXEC.
+      EXIT.
+    ELSE.
+
+      EXEC SQL.
+        select decode(UBRR_MGG_CRM.IsHypothec( to_number(:lv_anketa_id) ),0, 'X', ' ')
+          into :lv_delete_fixlim
+          from dual
+      ENDEXEC.
+
+      if lv_delete_fixlim = 'X'.
+* 5.1.2 удалить рассчитанный лимит с уведомление пользователя
+        EXEC SQL.
+          delete
+            from ubrr_vdata.ubrr_scoring_limit
+           where ilimit_ank = :lv_anketa_id
+        ENDEXEC.
+      endif.
+    ENDIF.
+  ENDDO.
+
+* 5.1.3 аннулировать дистанционное предложение
+  if lv_delete_fixlim = 'X'. " Дистанционного предложения для ипотеки быть не должно (аннулируем только для неипотечных)
+    EXEC SQL.
+      UPDATE ubrr_vdata.ubrr_shm_tab_scoring_fixlimit
+         SET dfixlimit_stop = SYSDATE
+       WHERE cfixlimit_bp   = ltrim(:IV_PARTNER, '0')
+         AND dfixlimit_stop >= SYSDATE
+         AND ifixlimit_typedog IN (SELECT typedog_id
+                                     FROM ubrr_vdata.ubrr_saa_remote_typedog)
+    ENDEXEC.
+  endif.
+* 5.1.1 удалить согласия на отправку запросов в БКИ за последние 60дней
+  EXEC SQL.
+    delete
+      from ubrr_crm.ubrr_bp_bki_agr
+     where CBP        = ltrim(:IV_PARTNER, '0')
+       and DAGR_DATE >= (sysdate - 60)
+  ENDEXEC.
+
+  EXEC SQL.
+    SET CONNECTION DEFAULT
+  ENDEXEC.
+
+  IF lv_delete_fixlim EQ 'X'.
+    CALL FUNCTION 'Z_ADD_MESSAGE'
+      EXPORTING
+        iv_msg_type = 'W'
+        iv_msg      = 'Действующие кредитные лимиты удалены, необходимо отправить заявку на кредит на расчёт лимита'
+    .
+  ENDIF.
+ENDFUNCTION.
