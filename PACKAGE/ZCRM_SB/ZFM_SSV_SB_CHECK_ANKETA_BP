@@ -1,13 +1,13 @@
 FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
 *"----------------------------------------------------------------------
-*"*"Р›РѕРєР°Р»СЊРЅС‹Р№ РёРЅС‚РµСЂС„РµР№СЃ:
+*"*"Локальный интерфейс:
 *"  IMPORTING
 *"     REFERENCE(IV_PARTNER) TYPE  BU_PARTNER
 *"     REFERENCE(IV_ANKETA_ID) TYPE  CHAR20
 *"  EXPORTING
 *"     REFERENCE(EV_NEED_UPD_DATA) TYPE  CHAR1
 *"----------------------------------------------------------------------
-** ubrr 30.11.2020 РЎРµРІР°СЃС‚СЊСЏРЅРѕРІ РЎ.Р’. [20-81088] РћР±РЅСѓР»РµРЅРёРµ Р»РёРјРёС‚Р° РїСЂРё РёР·РјРµРЅРµРЅРёРё РїРµСЂСЃРѕРЅР°Р»СЊРЅС‹С… РґР°РЅРЅС‹С… РІ РєР°СЂС‚РѕС‡РєРµ Р”Рџ.
+** ubrr 30.11.2020 Севастьянов С.В. [20-81088] Обнуление лимита при изменении персональных данных в карточке ДП.
 *"----------------------------------------------------------------------
   DATA: lv_anketa_id             TYPE crmt_object_id,
         lv_ishypothec            TYPE char1.
@@ -39,9 +39,22 @@ FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
         lv_entry_date_bp         TYPE bu_id_entry_date,
         lv_taxnum_bp             TYPE bptaxnum,
         lv_partner               TYPE bu_partner,
-        lv_client_type           TYPE bu_type.
+        lv_client_type           TYPE bu_type,
+        lv_ups_value             TYPE ZUBRR_UPSVALUE.
 
   CLEAR ev_need_upd_data.
+
+  SELECT SINGLE CUPSVALUE
+    INTO lv_ups_value
+    FROM ZUBRR_UPS
+   WHERE CUPSPREF = 'FM_SB_RESET_LIMIT_OFF'
+     AND CUPSUSER = 'ALL'.
+
+  IF SY-SUBRC     EQ 0   AND
+     lv_ups_value EQ 'X'
+  .
+    RETURN.
+  ENDIF.
 
   IF zcl_jsp_connect=>con_name IS INITIAL.
     zcl_util_dm_oltp=>zconnect_oltp( EXPORTING iv_connect_or_disconnect = 'CONNECT'
@@ -78,13 +91,11 @@ FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
       EXIT.
     ELSE.
       EXEC SQL.
-        select 'X'
+        select decode(UBRR_MGG_CRM.IsHypothec( to_number(:iv_anketa_id) ),0, ' ', 'X')
           into :lv_ishypothec
-          from ubrr_scoring_cb_anketa
-         where anketa_id  = :lv_anketa_id
-           and crmproduct = 'P095'
+          from dual
       ENDEXEC.
-      IF SY-SUBRC NE 0 OR lv_ishypothec NE 'X'.
+      IF lv_ishypothec NE 'X'.
         EXEC SQL.
           select anketa_fam,
                  anketa_im,
@@ -119,18 +130,18 @@ FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
            ELSEIF SY-SUBRC NE 0.
              CONTINUE.
            ENDIF.
-* РџСЂРµРѕР±СЂР°Р·РѕРІР°РЅРёРµ РґР°РЅРЅС‹С…
-* РЎР•Р РРЇ РџРђРЎРџРћР РўРђ
+* Преобразование данных
+* СЕРИЯ ПАСПОРТА
            MOVE lv_anketa_seriespassport TO lv_seriespassport.
-* РќРћРњР•Р  РџРђРЎРџРћР РўРђ
+* НОМЕР ПАСПОРТА
            MOVE lv_anketa_numberpassport TO lv_numberpassport.
-* Р”РђРўРђ Р’Р«Р”РђР§Р РџРђРЎРџРћР РўРђ
+* ДАТА ВЫДАЧИ ПАСПОРТА
            MOVE lv_anketa_datepassport   TO lv_entry_date.
-* РЎРќРР›РЎ
+* СНИЛС
            MOVE lv_anketa_numberstateinc TO lv_numberstateinc.
-* РРќРќ
+* ИНН
            MOVE lv_anketa_inn            TO lv_taxnum.
-* РџСЂРѕРІРµСЂРєР° РїР°СЃСЃРїРѕСЂС‚РЅС‹С… РґР°РЅРЅС‹С…
+* Проверка пасспортных данных
            IF ev_need_upd_data NE 'X'.
              SELECT SINGLE ZZAFLD000012 IDNUMBER ENTRY_DATE
                INTO (lv_seriespassport_bp, lv_passportnum_bp, lv_entry_date_bp)
@@ -153,7 +164,7 @@ FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
                ev_need_upd_data = 'X'.
              ENDIF.
            ENDIF.
-* РџСЂРѕРІРµСЂРєР° РЅР° РЎРќРР›РЎ
+* Проверка на СНИЛС
            IF ev_need_upd_data NE 'X'.
              SELECT SINGLE IDNUMBER
                INTO lv_sinlsnum_bp
@@ -165,7 +176,7 @@ FUNCTION ZFM_SSV_SB_CHECK_ANKETA_BP.
                ev_need_upd_data = 'X'.
              ENDIF.
            ENDIF.
-* РџСЂРѕРІРµСЂРєР° РЅР° СЃРѕРѕС‚РІ РРќРќ
+* Проверка на соотв ИНН
            IF ev_need_upd_data NE 'X' and lv_taxnum IS NOT INITIAL.
              IF lv_client_type EQ '1'.
                SELECT SINGLE a~TAXNUM
