@@ -1,0 +1,389 @@
+﻿FUNCTION ZUBRR_FM_SB_PROCESS_QUEUE.
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"----------------------------------------------------------------------
+  DATA: ls_queue              TYPE zubrrsb_queue,
+        lt_queue              TYPE TABLE OF zubrrsb_queue,
+        ls_queempl            TYPE zubrrsb_queempl,
+        lt_header_guid        TYPE crmt_object_guid_tab,
+        lt_orderadm_h         TYPE crmt_orderadm_h_wrkt,
+        ls_orderadm_h         TYPE crmt_orderadm_h_wrk,
+        lt_partner            TYPE crmt_partner_external_wrkt,
+        ls_partner            TYPE crmt_partner_external_wrk,
+        lt_status             TYPE crmt_status_wrkt,
+        ls_status             TYPE crmt_status_wrk,
+        ls_prequeue           TYPE ZSTR_ZAA_SB_PREQUEUE,
+        lt_prequeue           TYPE TABLE OF ZSTR_ZAA_SB_PREQUEUE,
+        lv_objguid            type guid_32,
+        lv_algsb              type zalgsb,
+        lv_count              type sytabix,
+        lv_anketaid           type crmt_external_activity_id,
+        lt_queue_calc         type table of zubrrsb_queue_calc,
+*--->>> ubrr 15.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+        lv_ups_value          type zubrr_upsvalue,
+        lv_counter            type i.
+*---<<< ubrr 15.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+  FIELD-SYMBOLS: <fs_queue_calc> type zubrrsb_queue_calc.
+
+* Проверим назначеные задачи
+  select *
+    into table lt_queue
+    from zubrrsb_queue
+   where object_guid <> '00000000000000000000000000000000'.
+  loop at lt_queue into ls_queue.
+      CLEAR: lt_header_guid.
+      APPEND ls_queue-object_guid TO lt_header_guid.
+      CALL FUNCTION 'CRM_ORDER_READ'
+          EXPORTING it_header_guid       = lt_header_guid
+          IMPORTING et_partner           = lt_partner
+                    et_status            = lt_status
+         EXCEPTIONS OTHERS               = 1.
+* Не нашли задачу - ставим в очередь снова
+      if sy-subrc <> 0.
+          CLEAR: ls_queue-object_guid.
+          CALL FUNCTION 'ZUBRR_FM_SB_MODIFY_QUEUE'
+               CHANGING cs_queue = ls_queue.
+      else.
+          read table lt_partner into ls_partner
+            with key ref_guid = ls_queue-object_guid
+                     partner_fct = '00000014'.
+          if ls_partner-partner_no = ls_queue-partner.
+* удалямем из очереди
+              delete from zubrrsb_queue
+               where id = ls_queue-id.
+              ls_queempl-id          = ls_queue-id.
+              ls_queempl-object_guid = ls_queue-object_guid.
+              ls_queempl-partner     = ls_queue-partner.
+              ls_queempl-que_date    = sy-datlo.
+              ls_queempl-que_time    = sy-timlo.
+              ls_queempl-stat        = 'Взята в работу'.
+              modify zubrrsb_queempl from ls_queempl.
+*--->>> ubrr 15.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+          elseif ls_partner-partner_no is initial.
+* Считываем настройку
+             SELECT SINGLE CUPSVALUE
+               INTO lv_ups_value
+               FROM ZUBRR_UPS
+              WHERE CUPSPREF = 'FM_SB_PROCESS_QUEUE_CNT'
+                AND CUPSUSER = 'ALL'.
+            if sy-subrc eq 0.
+            " если настройка есть
+              TRY.
+                MOVE lv_ups_value TO lv_counter.
+              CATCH CX_ROOT.
+                lv_counter = 1.
+              ENDTRY.
+            else.
+            " если настройки нет
+              lv_counter = 1.
+            endif.
+            if ls_queue-counter lt lv_counter.
+              ls_queue-counter = ls_queue-counter + 1.
+              modify zubrrsb_queue from ls_queue.
+              continue.
+            else.
+* удалямем из очереди
+              delete from zubrrsb_queue
+               where id = ls_queue-id.
+            endif.
+              ls_queempl-id          = ls_queue-id.
+              ls_queempl-object_guid = ls_queue-object_guid.
+              ls_queempl-partner     = ls_queue-partner.
+              ls_queempl-que_date    = sy-datlo.
+              ls_queempl-que_time    = sy-timlo.
+              lv_count = 0.
+              loop at lt_status into ls_status where status cs 'E'.
+                exit.
+              endloop.
+              if ls_status-status = 'E0007'.
+                select count(*)
+                  into lv_count
+                  from zsb_orders as o inner join zubrrsb_stgr_st as s on s~estat = o~estat and s~stsma = o~stsma
+                 where o~empl = ls_queue-partner
+                   and s~statgrup = '000001'.
+              endif.
+              if lv_count = 0.
+                ls_queempl-stat = 'Задача снята по времени'.
+              else.
+                ls_queempl-stat = 'Сотрудник занят'.
+              endif.
+              modify zubrrsb_queempl from ls_queempl.
+*---<<< ubrr 15.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+          else.
+* В работу взяли но не тот сотрудник
+              CLEAR: ls_queue-object_guid.
+              CALL FUNCTION 'ZUBRR_FM_SB_MODIFY_QUEUE'
+                   CHANGING cs_queue = ls_queue.
+          endif.
+      endif.
+  endloop.
+  select count(*)
+    into lv_count
+    from zubrrsb_queue.
+  if lv_count = 0.
+      return.
+  endif.
+  EXEC SQL.
+      SET CONNECTION DEFAULT
+  ENDEXEC.
+* Обрабатываем очередь
+*--->>> ubrr 10.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+*         and o.process_type <> 'ZSB9'
+*---<<< ubrr 10.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+  EXEC SQL.
+    open rTask for
+       select distinct alg.numberinlist, alg.algselecttask, o.header, o.grtp, o.date_plan_from
+       from sapsr3.zubrrsb_algseltk alg,
+            sapsr3.zubrrsb_stgr_st st,
+            sapsr3.zsb_orders o
+       where alg.mandt = '300'
+         and st.mandt = alg.mandt
+         and st.statgrup = '000001'
+         and o.stsma = st.stsma
+         and o.estat = st.estat
+         and o.prodtype = alg.prodtype
+         and (o.process_type = alg.process_type or nvl(alg.process_type,' ') = ' ')
+         and (o.priority = alg.priority or alg.priority = '0')
+         and not exists (select 1
+                           from sapsr3.zsb_orders o2
+                          where o2.header = o.header
+                            and o2.empl <> ' ')
+       order by alg.numberinlist, o.date_plan_from
+  ENDEXEC.
+  do.
+      select count(*)
+        into lv_count
+        from zubrrsb_queue.
+      if lv_count = 0.
+          exec sql.
+            close rTask
+          endexec.
+          return.
+      endif.
+      exec sql.
+        fetch next rTask into :ls_prequeue
+      endexec.
+      if sy-subrc ne 0.
+        exec sql.
+          close rTask
+        endexec.
+        exit.
+      endif.
+      append ls_prequeue to lt_prequeue.
+  enddo.
+  loop at lt_prequeue into ls_prequeue.
+      select count(*)
+        into lv_count
+        from zubrrsb_queue.
+      if lv_count = 0.
+          return.
+      endif.
+*--->>> ubrr 26.03.2018 Севастьянов С.В. [17-1325] SAP CRM: Сценарии ОПП ФЛ
+  if ls_prequeue-grtp eq ' '.
+    data: lv_compare_guid type CRMT_OBJECT_GUID,
+          lt_guidlist     type crmt_object_guid_tab_unsorted,
+          lv_guid         type crmt_object_guid,
+          lv_fnd_order_l  type c.
+    " Получим гуид продукта "Ипотека ФЛ"
+    select single
+           PRODUCT_GUID
+      into lv_compare_guid
+      from Comm_Product
+     where PRODUCT_ID = 'P095'.
+
+    clear lt_guidlist.
+    select DISTINCT o~header
+      from zubrrsb_stgr_st as st
+     inner join zsb_orders as o
+        on o~stsma = st~stsma
+       and o~estat = st~estat
+      join CRMD_OBJREF_REL as ab
+        on ab~client     = ab~client
+      join srrelroles as ra
+        on ra~client     = ab~client
+       and ra~roleid     = ab~role_a
+      join srrelroles as rb
+        on rb~client     = ab~client
+       and rb~roleid     = ab~role_b
+      join crmd_orderadm_h as oa
+        on oa~client     = ra~client
+       and oa~guid       = ra~objkey
+       and oa~object_id  = o~object_id
+      INTO TABLE lt_guidlist
+     where o~header  = ls_prequeue-header
+       and rb~objkey = lv_compare_guid.
+
+     lv_fnd_order_l = ' '.
+     loop at lt_guidlist into lv_guid.
+       lv_fnd_order_l = 'X'.
+       exit.
+     endloop.
+     if lv_fnd_order_l = 'X'.
+       ls_prequeue-grtp = '095'.
+     endif.
+
+
+*   if lv_fnd_order_l ne 'X'.
+*     lv_compare_guid = ls_prequeue-header.
+*     EXEC SQL.
+*      open rTask for
+*        select distinct alg.numberinlist, alg.algselecttask, o.header, o.grtp, o.date_plan_from
+*          from sapsr3.zubrrsb_algseltk alg,
+*               sapsr3.zubrrsb_stgr_st st,
+*               sapsr3.zsb_orders o
+*         where alg.mandt = '300'
+*           and st.mandt = alg.mandt
+*           and st.statgrup = '000001'
+*           and o.stsma = st.stsma
+*           and o.estat = st.estat
+*           and o.prodtype = alg.prodtype
+*           and (o.process_type = alg.process_type or nvl(alg.process_type,' ') = ' ')
+*           and o.process_type <> 'ZSB9'
+*           and (o.priority = alg.priority or alg.priority = '0')
+*           and not exists (select 1
+*                             from sapsr3.zsb_orders o2
+*                            where o2.header = o.header
+*                              and o2.empl <> ' ')
+*           and o.header = :lv_compare_guid
+*      order by alg.numberinlist, o.date_plan_from
+*     ENDEXEC.
+*     do.
+*       select count(*)
+*         into lv_count
+*         from zubrrsb_queue.
+*       if lv_count = 0.
+*          exec sql.
+*            close rTask
+*          endexec.
+*          return.
+*       endif.
+*       exec sql.
+*         fetch next rTask into :ls_prequeue
+*       endexec.
+*       if sy-subrc ne 0.
+*         exec sql.
+*           close rTask
+*         endexec.
+*         exit.
+*       else.
+*         lv_fnd_order_l  = 'X'.
+*       endif.
+*     enddo.
+*     if lv_fnd_order_l ne 'X'.
+*       continue.
+*     endif.
+*   endif.
+  endif.
+*---<<< ubrr 26.03.2018 Севастьянов С.В. [17-1325] SAP CRM: Сценарии ОПП ФЛ
+      try.
+          read table lt_queue_calc assigning <fs_queue_calc> with key object_guid = ls_prequeue-header.
+          if sy-subrc <> 0.
+              append initial line to lt_queue_calc assigning <fs_queue_calc>.
+          endif.
+          if <fs_queue_calc>-appoint is initial.
+              <fs_queue_calc>-object_guid = ls_prequeue-header.
+              lv_objguid = ls_prequeue-header.
+              CLEAR: ls_queue.
+              select q~ID q~PARTNER
+                into (ls_queue-ID, ls_queue-PARTNER)
+                from zubrrsb_queue as q inner join
+                     zubrrsb_empl as e on e~partner = q~partner inner join
+                     zubrrsb_tpgr as tp on tp~grtp = e~grtp
+               where q~object_guid = '00000000000000000000000000000000'
+                 and e~grtp = ls_prequeue-grtp
+                 and tp~algselecttask = ls_prequeue-algselecttask
+               order by q~ID.
+                  exit.
+              endselect.
+              if ls_queue-ID is initial.
+                  select q~ID q~PARTNER
+                    into (ls_queue-ID, ls_queue-PARTNER)
+                    from zubrrsb_queue as q inner join
+                         zubrrsb_add_grtp as e on e~partner = q~partner inner join
+                         zubrrsb_tpgr as tp on tp~grtp = e~grtp
+                   where q~object_guid = '00000000000000000000000000000000'
+                     and e~grtp = ls_prequeue-grtp
+                     and tp~algselecttask = ls_prequeue-algselecttask
+                   order by q~ID.
+                      exit.
+                  endselect.
+              else.
+                  select q~ID q~PARTNER
+                    into (ls_queue-ID, ls_queue-PARTNER)
+                    from zubrrsb_queue as q inner join
+                         zubrrsb_add_grtp as e on e~partner = q~partner inner join
+                         zubrrsb_tpgr as tp on tp~grtp = e~grtp
+                   where q~object_guid = '00000000000000000000000000000000'
+                     and e~grtp = ls_prequeue-grtp
+                     and tp~algselecttask = ls_prequeue-algselecttask
+                     and q~ID < ls_queue-ID
+                   order by q~ID.
+                      exit.
+                  endselect.
+              endif.
+              if ls_queue is not initial.
+                  CLEAR: lt_header_guid, lt_orderadm_h, lt_partner, lv_anketaid.
+                  APPEND ls_prequeue-header TO lt_header_guid.
+
+                  CALL FUNCTION 'CRM_ORDER_READ'
+                      EXPORTING it_header_guid       = lt_header_guid
+                      IMPORTING et_orderadm_h        = lt_orderadm_h
+                                et_partner           = lt_partner
+                     EXCEPTIONS OTHERS               = 1.
+                  if sy-subrc = 0.
+                      read table lt_orderadm_h into ls_orderadm_h index 1.
+                      if zcl_jsp_connect=>con_name is initial.
+*                         -->>>ubrr Лобик Д.А.08.02.2016 #27417 [15-1700.3] SAP CRM: Создание контекста для пользователей
+*                          EXEC SQL.
+*                            SET CONNECTION 'UVKL'
+*                          ENDEXEC.
+*                          if sy-subrc <> 0.
+*                              EXEC SQL.
+*                                CONNECT TO 'UVKL'
+*                              ENDEXEC.
+*                          endif.
+                          ZCL_UTIL_DM_OLTP=>ZCONNECT_OLTP( exporting IV_CONNECT_OR_DISCONNECT = 'CONNECT'
+                                                                       IV_CON_NAME               = 'UVKL'
+                                                           ).
+*                         --<<<ubrr Лобик Д.А.08.02.2016 #27417 [15-1700.3] SAP CRM: Создание контекста для пользователей
+                      else.
+                          zcl_jsp_connect=>connect( ).
+                      endif.
+                      EXEC SQL.
+                          select parent_anketa
+                            into :lv_anketaid
+                            from ubrr_scoring_cb_anketa
+                           where object_id = :ls_orderadm_h-object_id
+                      ENDEXEC.
+                      if lv_anketaid is initial.
+                          read table lt_partner into ls_partner
+                            with key ref_guid = ls_prequeue-header
+                                     partner_fct = '00000014'.
+                          if ls_partner-partner_no is initial.
+                              select count(*)
+                                into lv_count
+                                from zubrrsb_queue
+                                where object_guid = ls_prequeue-header.
+                          else.
+                              lv_count = 1.
+                          endif.
+                          if lv_count = 0.
+                              ls_queue-object_guid = ls_prequeue-header.
+                              CALL FUNCTION 'ZUBRR_FM_SB_MODIFY_QUEUE'
+                                   CHANGING cs_queue = ls_queue.
+                              <fs_queue_calc>-appoint = 'X'.
+                          else.
+                              <fs_queue_calc>-appoint = 'X'.
+                          endif.
+                      else.
+                          <fs_queue_calc>-appoint = 'X'.
+                      endif.
+                  else.
+                      <fs_queue_calc>-appoint = 'X'.
+                  endif.
+              endif.
+          endif.
+      catch cx_root.
+      endtry.
+  endloop.
+ENDFUNCTION.
