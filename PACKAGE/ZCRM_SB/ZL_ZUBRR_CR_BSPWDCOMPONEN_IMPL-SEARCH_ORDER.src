@@ -1,0 +1,300 @@
+﻿method SEARCH_ORDER.
+  TYPES: BEGIN OF filter_type,
+         proc_type  type CRMT_PROCESS_TYPE,
+         estat      type range of CRM_J_STATUS,
+         END OF filter_type.
+  DATA: lv_from       type string,
+        lv_where      type string,
+        lt_where      type crmt_report_dyn_sql_line_ta,
+        lt_guidlist   type crmt_object_guid_tab_unsorted,
+        lt_guidlist_tmp type crmt_object_guid_tab_unsorted,
+        lv_guid       type crmt_object_guid,
+        lt_objkey     type crmt_bsp_objectkey_tab,
+        lv_objkey     type crmt_bsp_objectkey,
+        lt_order      type crmt_query_r_act_btil,
+        ls_order      type crmst_query_r_act_btil,
+        lv_rootlist   type ref to if_genil_cont_root_objectlist,
+        lr_object     type ref to if_genil_cont_root_object,
+        lv_date_from  type string,
+        lv_date_to    type string,
+        lv_time_tmp   type string,
+        lv_data_tmp   type string,
+        lt_sal_off_r  type range of CRMT_SALES_OFFICE,
+        ls_sal_off_r  like line of lt_sal_off_r,
+        lt_proc_type  type table of filter_type,
+        ls_proc_type  type filter_type,
+        lv_proc_type  type CRMT_PROCESS_TYPE,
+        ls_estat      like line of ls_proc_type-estat,
+        lv_index      type sytabix,
+        lv_tstamp_s   type timestamp,
+        lv_tmp_string type string,
+        ls_orgman     TYPE crmt_1001_orgman_ui.
+
+  if IV_OBJECT_ID is not initial.
+      select header
+        into table lt_guidlist
+        from zsb_orders
+       where object_id = IV_OBJECT_ID.
+  elseif IV_ANKETA_ID is not initial.
+      select header
+        into table lt_guidlist
+        from zsb_orders
+       where extern_act_id = IV_ANKETA_ID.
+  else.
+      lv_where = ' o~object_id is not null'.
+      append lv_where to lt_where.
+      clear lv_where.
+      if iv_stat_gr is not initial.
+          lv_from = 'zubrrsb_stgr_st as st inner join zsb_orders as o on o~stsma = st~stsma and o~estat = st~estat'.
+          clear lv_where.
+          if iv_last_week is not initial.
+              get time stamp field lv_tstamp_s.
+              call method CL_ABAP_TSTMP=>add
+                   exporting tstmp = lv_tstamp_s
+                             secs = -604800
+                   receiving r_tstmp =  lv_tstamp_s.
+              lv_tmp_string = lv_tstamp_s.
+              CONCATENATE 'and o~date_plan_from >=' lv_tmp_string  into lv_where separated by space.
+              append lv_where to lt_where.
+              clear lv_where.
+          endif.
+          CONCATENATE 'and st~statgrup = ''' iv_stat_gr '''' into lv_where.
+          append lv_where to lt_where.
+          clear lv_where.
+      else.
+          lv_from = 'zsb_orders as o'.
+      endif.
+      if iv_proc_type is not initial.
+          CONCATENATE 'and o~process_type = ''' iv_proc_type '''' into lv_where.
+          append lv_where to lt_where.
+          clear lv_where.
+      endif.
+      if iv_grtp is not initial.
+*--->>> ubrr 13.03.2018 Севастьянов С.В. [17-1325] SAP CRM: Сценарии ОПП ФЛ
+        DATA: lt_header        TYPE CRMT_OBJECT_GUID_TAB,
+              lt_docflow       TYPE CRMT_DOC_FLOW_WRKT,
+              lv_include_obj   TYPE c,
+              ls_docflow       LIKE LINE OF lt_docflow,
+              lv_ups_value    type ZUBRR_UPSVALUE,
+              lv_compare_guid type CRMT_OBJECT_GUID.
+
+        if iv_grtp eq '095'.   " Группа ТП Ипотека
+          " Ипотека для ФЛ (Поскольку группа ТП не всегда проставлена в таблице zsb_orders, решено с технологом и исходя из ТЗ что ищем еще по полю тип продукта)
+          CONCATENATE 'and (o~grtp = ''' iv_grtp '''' ' or o~grtp eq '' '' and o~PRODTYPE = ''POTREB00'')' into lv_where.
+          append lv_where to lt_where.
+          clear lv_where.
+        "  lv_compare_guid = 'F1E81A587D88FD4BE1000000B1110688'. Гуид продукта в таблице COMM_PRSHTEXT (Ипотека для ФЛ)
+        " Кроме того, поскольку одного поля тип продукта недостаточно для одназначной идентификатции задач Ипотека для ФЛ
+        " Нам необходим гуид продукта из таблицы COMM_PRSHTEXT (Ипотека для ФЛ)
+        " Который мы сравним с гуидом продукта связанного с задачей дополнив переменную lv_from и lt_where
+          if lv_compare_guid is initial.
+            select single CUPSVALUE
+              into lv_ups_value
+              from ZUBRR_UPS
+             where CUPSPREF = 'PRODUCT_IPOTEKA_FL'
+               and CUPSUSER = 'ALL'.
+
+            if sy-subrc eq 0.
+              MOVE lv_ups_value to lv_compare_guid.
+            else.
+
+              select single
+                     PRODUCT_GUID
+                into lv_compare_guid
+                from Comm_Product
+               where PRODUCT_ID = 'P095'.
+
+              if sy-subrc eq 0.
+                data: lv_ZUBRR_UPS type ZUBRR_UPS.
+                lv_ZUBRR_UPS-CUPSPREF  = 'PRODUCT_IPOTEKA_FL'.
+                lv_ZUBRR_UPS-CUPSUSER  = 'ALL'.
+                lv_ZUBRR_UPS-CUPSVALUE = lv_compare_guid.
+                modify ZUBRR_UPS from lv_ZUBRR_UPS.
+                commit work.
+              endif.
+            endif.
+          endif.
+          if lv_compare_guid is not initial.
+            data: lv_str type string.
+            MOVE lv_compare_guid TO lv_str.
+            " rb~objkey = Гуид продукта (OBJKEY_B)
+            " ra~objkey = Гуид задачи   (OBJKEY_A) = o~header = oa~guid
+            CONCATENATE 'and rb~objkey = ''' lv_str '''' into lv_where.
+            append lv_where to lt_where.
+            clear lv_where.
+            CONCATENATE lv_from ' join CRMD_OBJREF_REL as ab       ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from '   on ab~client     = ab~client   ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from ' join srrelroles as ra            ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from '   on ra~client     = ab~client   ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from '  and ra~roleid     = ab~role_a   ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from ' join srrelroles as rb            ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from '   on rb~client     = ab~client   ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from '  and rb~roleid     = ab~role_b   ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from ' join crmd_orderadm_h as oa       ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from '   on oa~client     = ra~client   ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from '  and oa~guid       = ra~objkey   ' into lv_from RESPECTING BLANKS.
+            CONCATENATE lv_from '  and oa~object_id  = o~object_id ' into lv_from RESPECTING BLANKS.
+            clear lv_compare_guid.
+          endif.
+*--->>> ubrr 23.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+        elseif iv_grtp eq '66' or " Группа ТП Потребительское кредитование
+               iv_grtp eq '333'.
+          " Исключаем Ипотеку
+          CONCATENATE 'and o~grtp <> ''095''' '' into lv_where.
+          append lv_where to lt_where.
+          clear lv_where.
+        elseif iv_grtp eq '995'.  " "Все заяки": 66, 222 и 095
+          CONCATENATE 'and o~grtp in ' '(' '''66''' ', ' '''222''' ', ' '''095''' ')' into lv_where respecting blanks.
+          append lv_where to lt_where.
+          clear lv_where.
+        elseif iv_grtp eq '994'. " "Все заявки ВУЗ-банк": 333 и  997
+          CONCATENATE 'and o~grtp in ' '(' '''333''' ', ' '''997''' ')' into lv_where respecting blanks.
+          append lv_where to lt_where.
+          clear lv_where.
+        elseif iv_grtp eq '222' or iv_grtp eq '997'. " Группа ТП Экспертные проверки
+          clear lv_where.
+*---<<< ubrr 23.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+        else.
+*---<<< ubrr 13.03.2018 Севастьянов С.В. [17-1325] SAP CRM: Сценарии ОПП ФЛ
+          CONCATENATE 'and o~grtp = ''' iv_grtp '''' into lv_where.
+          append lv_where to lt_where.
+          clear lv_where.
+*--->>> ubrr 13.03.2018 Севастьянов С.В. [17-1325] SAP CRM: Сценарии ОПП ФЛ
+        endif.
+*---<<< ubrr 13.03.2018 Севастьянов С.В. [17-1325] SAP CRM: Сценарии ОПП ФЛ
+      endif.
+      if iv_priority is not initial or iv_stat_gr is initial.
+          if iv_priority is not initial.
+              CONCATENATE 'and o~priority = ''' iv_priority '''' into lv_where.
+              append lv_where to lt_where.
+              clear lv_where.
+          endif.
+      endif.
+      if iv_empl_no is not initial.
+          CONCATENATE 'and o~empl = ''' iv_empl_no '''' into lv_where.
+          append lv_where to lt_where.
+          clear lv_where.
+      endif.
+      if iv_data_to is not initial or iv_data_from is not initial.
+          if iv_data_from is not initial.
+              lv_data_tmp = iv_data_from.
+          else.
+              lv_data_tmp = iv_data_to.
+          endif.
+          lv_time_tmp = '000000'.
+          CONCATENATE lv_data_tmp lv_time_tmp into lv_date_from.
+          if iv_data_to is not initial.
+              lv_data_tmp = iv_data_to.
+          else.
+              lv_data_tmp = iv_data_from.
+          endif.
+          lv_time_tmp = '235959'.
+          CONCATENATE lv_data_tmp lv_time_tmp into lv_date_to.
+          CONCATENATE 'and ( o~date_plan_from between' lv_date_from 'and' lv_date_to into lv_where separated by space.
+          append lv_where to lt_where.
+          clear lv_where.
+          CONCATENATE 'or o~date_plan_to between' lv_date_from 'and' lv_date_to into lv_where separated by space.
+          append lv_where to lt_where.
+          clear lv_where.
+          CONCATENATE 'or ( o~date_plan_from <=' lv_date_from into lv_where separated by space.
+          append lv_where to lt_where.
+          clear lv_where.
+          CONCATENATE 'and o~date_plan_to >=' lv_date_from ') )'  into lv_where separated by space.
+          append lv_where to lt_where.
+          clear lv_where.
+      endif.
+      if iv_grtp eq '222' or iv_grtp eq '997'. " Группа ТП Экспертные проверки
+          lv_where =  'and o~process_type = ''ZSB9'''.
+          append lv_where to lt_where.
+          clear lv_where.
+      elseif iv_grtp eq '995' or iv_grtp eq '994'.  " Группа ТП Все заявки
+          clear lv_where.
+      elseif iv_grtp is not initial.
+          lv_where =  'and o~process_type <> ''ZSB9'''.
+          append lv_where to lt_where.
+          clear lv_where.
+      endif.
+
+      SELECT DISTINCT o~header
+        FROM (lv_from)
+       UP TO iv_up_to ROWS
+        INTO TABLE lt_guidlist
+       WHERE (lt_where).
+  endif.
+  if iv_queue = abap_true.
+      select object_guid
+        into lv_guid
+        from zubrrsb_queue
+       where partner = gv_empl_no
+         and object_guid <> '00000000000000000000000000000000'.
+        append lv_guid to lt_guidlist.
+      endselect.
+  endif.
+  loop at lt_guidlist into lv_guid.
+*--->>> 20.05.2016 Симонов #30669 [16-1808.2.8.1.2.2] Предкредитная проверка ФЛ: SAP: АРМ БАА
+    clear ls_orgman.
+    CALL FUNCTION 'CRM_INTLAY_GET_DATA'
+      EXPORTING
+        iv_guid           = lv_guid
+        iv_kind           = 'A'
+        iv_interfacename  = 'CRMT_1001_ORGMAN_UI'
+      IMPORTING
+        es_interfacevalue = ls_orgman
+      EXCEPTIONS
+        error_occurred    = 1
+        no_valid_guid     = 2
+        others            = 3.
+    if sy-subrc is initial and ls_orgman-dis_channel in zcl_sim_authority_check=>gt_range.
+       lv_objkey = lv_guid.
+       append lv_objkey to lt_objkey.
+    endif.
+***      lv_objkey = lv_guid.
+***      append lv_objkey to lt_objkey.
+*---<<< 20.05.2016 Симонов #30669 [16-1808.2.8.1.2.2] Предкредитная проверка ФЛ: SAP: АРМ БАА
+  endloop.
+  CALL FUNCTION 'CRM_BSP_OIC_1O_READ_FROM_RF'
+      EXPORTING it_object_key            = lt_objkey
+                iv_screen_structure_name = 'CRMST_QUERY_R_ACT_BTIL'
+      IMPORTING et_screen_structure      = lt_order.
+  lv_rootlist = cl_crm_genil_container_tools=>get_new_cont_root_list( ).
+  if iv_grtp eq '222' or iv_grtp eq '997'. " Группа ТП Экспертные проверки.
+    LOOP AT lt_order into ls_order
+      where PROCESS_TYPE = 'ZSB9'.
+      TRY.
+          lr_object = lv_rootlist->add_object( iv_object_name = 'BTQRAct'
+                                               is_object_key  = ls_order-object_key ).
+*--->>> ubrr 17.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+          SET_PRIORITY_ORDER( CHANGING CS_ORDER = ls_order ).
+*---<<< ubrr 17.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+          lr_object->set_attributes( ls_order ).
+        CATCH cx_crm_genil_duplicate_rel cx_crm_genil_model_error.
+      ENDTRY.
+    ENDLOOP.
+  elseif iv_grtp is not initial and iv_grtp ne '994' and iv_grtp ne '995'.
+    LOOP AT lt_order into ls_order
+      where PROCESS_TYPE <> 'ZSB9'.
+      TRY.
+          lr_object = lv_rootlist->add_object( iv_object_name = 'BTQRAct'
+                                               is_object_key  = ls_order-object_key ).
+*--->>> ubrr 17.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+          SET_PRIORITY_ORDER( CHANGING CS_ORDER = ls_order ).
+*---<<< ubrr 17.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+          lr_object->set_attributes( ls_order ).
+        CATCH cx_crm_genil_duplicate_rel cx_crm_genil_model_error.
+      ENDTRY.
+    ENDLOOP.
+  else.
+    LOOP AT lt_order into ls_order.
+      TRY.
+        lr_object = lv_rootlist->add_object( iv_object_name = 'BTQRAct'
+                                             is_object_key  = ls_order-object_key ).
+*--->>> ubrr 17.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+        SET_PRIORITY_ORDER( CHANGING CS_ORDER = ls_order ).
+*---<<< ubrr 17.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+        lr_object->set_attributes( ls_order ).
+      CATCH cx_crm_genil_duplicate_rel cx_crm_genil_model_error.
+      ENDTRY.
+    ENDLOOP.
+  endif.
+  rv_order_col = zl_crm_bol_entity_manager=>merge_from_dc( iv_root_list  = lv_rootlist ).
+endmethod.
