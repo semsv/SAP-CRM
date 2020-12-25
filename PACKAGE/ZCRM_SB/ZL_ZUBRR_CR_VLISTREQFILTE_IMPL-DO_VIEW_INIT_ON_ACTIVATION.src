@@ -1,0 +1,18 @@
+﻿method DO_VIEW_INIT_ON_ACTIVATION.
+  CALL METHOD SUPER->DO_VIEW_INIT_ON_ACTIVATION.
+  DATA: lr_col              type ref to if_bol_bo_col,
+        lr_valuenode        type ref to cl_bsp_wd_value_node,
+        ls_tabline          type zubrrsb_req_filter,
+        lr_tabline          type ref to zubrrsb_req_filter.
+  ls_tabline-STATGRUP = '000001'.
+  ls_tabline-UPTO = 200.
+  ls_tabline-LAST_WEEK = 'X'.
+  ls_tabline-AUTO_REFRESH = 'X'.
+  create object lr_col type cl_crm_bol_bo_col.
+  create data lr_tabline.
+  create object lr_valuenode
+  exporting iv_data_ref = lr_tabline.
+  lr_valuenode->set_properties( ls_tabline ).
+  lr_col->add( lr_valuenode ).
+  typed_context->filter->collection_wrapper->set_collection( lr_col ).
+endmethod.
