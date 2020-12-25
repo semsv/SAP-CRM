@@ -1,0 +1,58 @@
+﻿method set_priority_order.
+  zcl_jsp_connect=>connect( ).
+
+  data: lv_prodype         type zalgsb,
+        lv_time_norm_str   type string,
+        lv_new_request_str type string,
+        lv_tn_value        type zed_sb_currvalue,
+        lv_nr_value        type zed_sb_currvalue.
+
+  data: lr_expt_nsql       type ref to cx_sy_native_sql_error,
+        lv_err             type text1024,
+        lv_msg             type string.
+
+  select single prodtype
+    into lv_prodype
+    from zsb_orders
+   where header = cs_order-guid.
+
+  clear: lv_tn_value, lv_nr_value.
+
+  if sy-subrc eq 0.
+
+    select single time_norm new_request
+      into (lv_time_norm_str, lv_new_request_str)
+      from zsb_algcoeffopt
+     where algsb = lv_prodype.
+
+    if sy-subrc eq 0.
+      move lv_time_norm_str to lv_tn_value.
+      move lv_new_request_str to lv_nr_value.
+    endif.
+  endif.
+
+  try.
+    exec sql.
+     select case
+              when sysdate - plan_date_start > 1 or :lv_tn_value = 0
+                then 99*100 + :cs_order-object_id
+              else round(((sysdate-plan_date_start)*24*60/ to_number(:lv_time_norm_str, '9999999999.99') + to_number(:lv_new_request_str, '9999999999.99') )*100)
+            end
+       into :cs_order-zcessnumber
+       from ubrr_scoring_cb_anketa
+      where object_id = :cs_order-object_id
+    endexec.
+  catch cx_sy_native_sql_error into lr_expt_nsql.
+    lv_msg = lr_expt_nsql->sqlmsg.
+    lv_err = '-1'.
+    cs_order-zcessnumber = 99 * 100 + cs_order-object_id.
+  catch cx_root.
+    cs_order-zcessnumber = 99 * 100 + cs_order-object_id.
+  cleanup.
+    cs_order-zcessnumber = 99 * 100 + cs_order-object_id.
+  endtry.
+
+  exec sql.
+    set connection default
+  endexec.
+endmethod.
