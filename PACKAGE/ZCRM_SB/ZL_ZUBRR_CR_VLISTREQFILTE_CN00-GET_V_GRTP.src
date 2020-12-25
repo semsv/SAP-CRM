@@ -1,0 +1,15 @@
+﻿method GET_V_GRTP.
+    DATA: lr_ddlb        TYPE REF TO CL_CRM_UIU_DDLB,
+          ls_ddlb        TYPE bsp_wd_dropdown_line,
+          lt_ddlb        TYPE bsp_wd_dropdown_table.
+    CREATE OBJECT lr_ddlb
+     EXPORTING iv_source_type = if_bsp_wd_valuehelp_pldescr=>source_type_table.
+    insert initial line into lt_ddlb index 1.
+    select grtp grtp_desc
+      into (ls_ddlb-key, ls_ddlb-value)
+      from ZUBRRSB_TPGR.
+        append ls_ddlb to lt_ddlb.
+    endselect.
+    lr_ddlb->set_selection_table( it_selection_table = lt_ddlb ).
+    rv_valuehelp_descriptor = lr_ddlb.
+endmethod.
