@@ -1,0 +1,8 @@
+﻿method EH_ONINQUEUE.
+    DATA: ls_queue      type zubrrsb_queue,
+          lr_comp_contr type ref to zl_zubrr_cr_bspwdcomponen_impl.
+    lr_comp_contr ?= comp_controller.
+    ls_queue-partner = lr_comp_contr->gv_empl_no.
+    CALL FUNCTION 'ZUBRR_FM_SB_MODIFY_QUEUE'
+         CHANGING cs_queue = ls_queue.
+endmethod.
