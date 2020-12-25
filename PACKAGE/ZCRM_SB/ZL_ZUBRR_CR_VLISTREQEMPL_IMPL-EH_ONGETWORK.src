@@ -1,0 +1,324 @@
+﻿method EH_ONGETWORK.
+    DATA: lr_core             type ref to cl_crm_bol_core,
+          lr_global_messages  type ref to cl_crm_genil_global_mess_cont,
+          lr_result           type ref to if_bol_bo_col,
+          ls_query_params     type genilt_query_parameters,
+          lt_selection_params type genilt_selection_parameter_tab,
+          ls_selection_params type genilt_selection_parameter,
+          lr_comp_contr       type ref to zl_zubrr_cr_bspwdcomponen_impl,
+          lv_grtpempl         type zubrrsb_grtp,
+          lv_algseltask       type zalgselecttask,
+          ls_algseltk         type zubrrsb_algseltk,
+          lv_size             type sytabix,
+          lr_act              type ref to cl_crm_bol_entity,
+          lr_btorder          type ref to cl_crm_bol_entity,
+          lr_btadminh         type ref to cl_crm_bol_entity,
+          lr_partnerset       type ref to cl_crm_bol_entity,
+          lr_empres           type ref to cl_crm_bol_entity,
+          lr_btdatesset       type ref to cl_crm_bol_entity,
+          lr_btdatefact       type ref to cl_crm_bol_entity,
+          lr_tx               type ref to if_bol_transaction_context,
+          lv_prod_guid        type comt_product_guid,
+          lv_otjid            type otjid,
+          lv_algsb            type zalgsb,
+          lv_anketaid         type crmt_external_activity_id,
+          lv_objid            type crmt_object_id_db,
+          lv_objguid          type guid_32,
+          lv_tmp_string       type string,
+          lv_stsma            type J_STSMA,
+          lv_proc_type        type CRMT_PROCESS_TYPE,
+          lv_timestamp        type timestamp,
+          lv_date1            TYPE dats,
+          lv_time1            TYPE tims,
+          lv_fact_from        TYPE char20,
+          ls_getwork          type ZUBRRSB_GETWORK,
+          ls_queue            type zubrrsb_queue,
+          ls_queempl          type zubrrsb_queempl.
+    EXEC SQL.
+        SET CONNECTION DEFAULT
+    ENDEXEC.
+    EXEC SQL.
+      select to_char(sysdate,'YYYYMMDDHH24MISS')
+        into :ls_getwork-date_from
+        from dual
+    ENDEXEC.
+    ls_getwork-login_usr = sy-uname.
+    lr_comp_contr ?= comp_controller.
+    lr_core = cl_crm_bol_core=>get_instance( ).
+    lr_global_messages = lr_core->get_global_message_cont( ).
+    select single grtp
+      into lv_grtpempl
+      from zubrrsb_empl
+     where partner = lr_comp_contr->gv_empl_no.
+    select single algselecttask
+      into lv_algseltask
+      from zubrrsb_tpgr
+     where grtp = lv_grtpempl.
+
+    " БАА-шники берут в работу заявки из всех регионов!!!
+    if lr_comp_contr->gv_profile = 'Z_BAA_ST' or lr_comp_contr->gv_profile = 'Z_BAA_RK'.
+      CLEAR lv_grtpempl.
+    endif.
+
+    select *
+      into ls_algseltk
+      from zubrrsb_algseltk
+     where algselecttask = lv_algseltask
+     order by numberinlist.
+        lr_result ?= lr_comp_contr->search_order( iv_stat_gr = '000001'
+                                                  iv_grtp = lv_grtpempl
+                                                  iv_proc_type = ls_algseltk-process_type
+                                                  iv_priority = ls_algseltk-PRIORITY ).
+*--->>> ubrr 18.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+        lr_result->sort( IV_ATTR_NAME = 'ZCESSNUMBER' IV_SORT_ORDER = 'D' ).
+*---<<< ubrr 18.11.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+        lv_size = lr_result->size( ).
+        lr_act ?= lr_result->get_first( ).
+        do lv_size times.
+            CLEAR: lv_tmp_string.
+            lv_objid = lr_act->get_property_as_string( iv_attr_name = 'OBJECT_ID' ).
+            zcl_jsp_connect=>connect( ).
+*анкеты заемщиков и поручителей в общий расчет не берем
+            EXEC SQL.
+              select parent_anketa
+                into :lv_anketaid
+                from ubrr_scoring_cb_anketa
+               where object_id = :lv_objid
+            ENDEXEC.
+            EXEC SQL.
+              SET CONNECTION DEFAULT
+            ENDEXEC.
+            if lr_act->get_property_as_string( iv_attr_name = 'PERSON_RESP' ) is initial and lv_anketaid is initial.
+                zcl_jsp_connect=>connect( ).
+                EXEC SQL.
+                  select anketa_id
+                    into :lv_anketaid
+                    from ubrr_scoring_cb_anketa
+                   where object_id = :lv_objid
+                ENDEXEC.
+                lr_btorder = lr_act->get_related_entity( 'BTADVSAct' ).
+                lr_btadminh = lr_btorder->get_related_entity( iv_relation_name = 'BTOrderHeader' ).
+                lv_objid = lr_btadminh->get_property_as_string( iv_attr_name = 'OBJECT_ID' ).
+                lv_objguid = lr_btadminh->get_property_as_string( iv_attr_name = 'GUID' ).
+                CALL FUNCTION 'ZUBRR_FM_SB_GET_PROD_ALG'
+                    EXPORTING iv_object_guid = lv_objguid
+                    IMPORTING ev_algsb = lv_algsb.
+
+                if lv_algsb = ls_algseltk-PRODTYPE or ls_algseltk-PRODTYPE is INITIAL.
+                    if lr_btorder->lock( ) = abap_true.
+                        lr_partnerset = lr_btadminh->get_related_entity( IV_RELATION_NAME = 'BTHeaderPartnerSet' ).
+                        if lr_partnerset is not bound.
+                            lr_partnerset = lr_btadminh->create_related_entity( IV_RELATION_NAME = 'BTHeaderPartnerSet' ).
+                        endif.
+                        lr_empres = lr_partnerset->get_related_entity( IV_RELATION_NAME = 'BTPartner_PFT_0008_MAIN' ).
+                        if lr_empres is not bound.
+                            lr_empres = lr_partnerset->create_related_entity( IV_RELATION_NAME = 'BTPartner_PFT_0008_MAIN' ).
+                        endif.
+                        if lr_empres->get_property_as_string( iv_attr_name = 'PARTNER_NO' ) is initial.
+                            if lr_empres->lock( ) = abap_true.
+                                lr_empres->set_property( iv_attr_name = 'PARTNER_NO'
+                                                         iv_value = lr_comp_contr->gv_empl_no ).
+                                lr_btdatesset = lr_btadminh->get_related_entity( IV_RELATION_NAME = 'BTHeaderDatesSet' ).
+                                if lr_btdatesset is not bound.
+                                    lr_btdatesset = lr_btadminh->create_related_entity( IV_RELATION_NAME = 'BTHeaderDatesSet' ).
+                                endif.
+                                lr_btdatefact = lr_btdatesset->get_related_entity( IV_RELATION_NAME = 'BTDate_T_ORDERACTUAL' ).
+                                if lr_btdatefact is not bound.
+                                    lr_btdatefact = lr_btdatesset->create_related_entity( IV_RELATION_NAME = 'BTDate_T_ORDERACTUAL' ).
+                                endif.
+                                lr_btdatefact->lock( ).
+                                GET TIME STAMP FIELD lv_timestamp.
+                                CONVERT TIME STAMP lv_timestamp TIME ZONE sy-zonlo into DATE lv_date1 TIME lv_time1.
+                                EXEC SQL.
+                                    select :lv_date1 || :lv_time1
+                                      into :lv_fact_from
+                                      from dual
+                                ENDEXEC.
+                                lr_btdatefact->set_property( iv_attr_name = 'TIMESTAMP_FROM'
+                                                             iv_value = lv_timestamp ).
+                                lr_btdatefact->set_property( iv_attr_name = 'TIMESTAMP_TO'
+                                                             iv_value = lv_timestamp ).
+                                lr_core->modify( ).
+                                lr_tx = lr_btorder->get_transaction( ).
+                                if lr_tx->save( ) = abap_true.
+                                    lr_tx->commit( ).
+                                    CONCATENATE 'Задача №' lv_objid 'взята в работу' into lv_tmp_string separated by space.
+                                    lr_global_messages->add_message( iv_msg_type = 'S'
+                                                                     iv_msg_id = 'BL'
+                                                                     iv_msg_number = '001'
+                                                                     iv_msg_v1 = lv_tmp_string
+                                                                     iv_show_only_once = abap_true ).
+                                    CLEAR: ls_queue.
+                                    select single *
+                                       into ls_queue
+                                       from zubrrsb_queue
+                                      where object_guid = lv_objguid.
+                                    if ls_queue is not initial.
+                                        delete from zubrrsb_queue
+                                         where id = ls_queue-id.
+                                        ls_queempl-id = ls_queue-id.
+                                        ls_queempl-object_guid = ls_queue-object_guid.
+                                        ls_queempl-partner = ls_queue-partner.
+                                        ls_queempl-que_date = sy-datlo.
+                                        ls_queempl-que_time = sy-timlo.
+                                        ls_queempl-stat = 'Взята в работу'.
+                                        modify zubrrsb_queempl from ls_queempl.
+                                    endif.
+                                    zcl_jsp_connect=>connect( ).
+                                    EXEC SQL.
+                                      EXECUTE PROCEDURE UBRR_SCORING_CB.Set_User ( in :lv_objid,
+                                                                                   in :sy-uname,
+                                                                                   in :lv_fact_from )
+                                    ENDEXEC.
+*анкеты заемщиков и поручителей
+                                    CLEAR: ls_query_params, ls_selection_params, lt_selection_params.
+                                    ls_query_params-max_hits = '99999'.
+                                    zcl_jsp_connect=>connect( ).
+                                    EXEC SQL.
+                                      open rAnk for
+                                      select object_id
+                                        from ubrr_scoring_cb_anketa a
+                                       where parent_anketa = :lv_anketaid
+                                         and numsend = (select max(numsend)
+                                                          from ubrr_scoring_cb_anketa a2
+                                                         where a.anketa_id = a2.anketa_id)
+                                    ENDEXEC.
+                                    do.
+                                        exec sql.
+                                          fetch next rAnk into :lv_objid
+                                        endexec.
+                                        if sy-subrc ne 0.
+                                          exec sql.
+                                            close rAnk
+                                          endexec.
+                                          exit.
+                                        endif.
+                                        ls_selection_params-ATTR_NAME = 'OBJECT_ID'.
+                                        ls_selection_params-SIGN = 'I'.
+                                        ls_selection_params-OPTION = 'EQ'.
+                                        ls_selection_params-LOW = lv_objid.
+                                        append ls_selection_params to lt_selection_params.
+                                    enddo.
+                                    EXEC SQL.
+                                      SET CONNECTION DEFAULT
+                                    ENDEXEC.
+                                    if lt_selection_params is not initial.
+                                        lr_result = lr_core->dquery( iv_query_name               = 'BTQAct'
+                                                                     is_query_parameters         = ls_query_params
+                                                                     it_selection_parameters     = lt_selection_params ).
+                                        lv_size = lr_result->size( ).
+                                        lr_act ?= lr_result->get_first( ).
+                                        do lv_size times.
+                                            lr_btorder = lr_act->get_related_entity( 'BTADVSAct' ).
+                                            lr_btadminh = lr_btorder->get_related_entity( iv_relation_name = 'BTOrderHeader' ).
+                                            lv_objid = lr_btadminh->get_property_as_string( iv_attr_name = 'OBJECT_ID' ).
+                                            lv_objguid = lr_btadminh->get_property_as_string( iv_attr_name = 'GUID' ).
+                                            if lr_btorder->lock( ) = abap_true.
+                                                lr_partnerset = lr_btadminh->get_related_entity( IV_RELATION_NAME = 'BTHeaderPartnerSet' ).
+                                                if lr_partnerset is not bound.
+                                                    lr_partnerset = lr_btadminh->create_related_entity( IV_RELATION_NAME = 'BTHeaderPartnerSet' ).
+                                                endif.
+                                                lr_empres = lr_partnerset->get_related_entity( IV_RELATION_NAME = 'BTPartner_PFT_0008_MAIN' ).
+                                                if lr_empres is not bound.
+                                                    lr_empres = lr_partnerset->create_related_entity( IV_RELATION_NAME = 'BTPartner_PFT_0008_MAIN' ).
+                                                endif.
+                                                if lr_empres->get_property_as_string( iv_attr_name = 'PARTNER_NO' ) is initial.
+                                                    if lr_empres->lock( ) = abap_true.
+                                                        lr_empres->set_property( iv_attr_name = 'PARTNER_NO'
+                                                                                 iv_value = lr_comp_contr->gv_empl_no ).
+                                                        lr_btdatesset = lr_btadminh->get_related_entity( IV_RELATION_NAME = 'BTHeaderDatesSet' ).
+                                                        if lr_btdatesset is not bound.
+                                                            lr_btdatesset = lr_btadminh->create_related_entity( IV_RELATION_NAME = 'BTHeaderDatesSet' ).
+                                                        endif.
+                                                        lr_btdatefact = lr_btdatesset->get_related_entity( IV_RELATION_NAME = 'BTDate_T_ORDERACTUAL' ).
+                                                        if lr_btdatefact is not bound.
+                                                            lr_btdatefact = lr_btdatesset->create_related_entity( IV_RELATION_NAME = 'BTDate_T_ORDERACTUAL' ).
+                                                        endif.
+                                                        lr_btdatefact->lock( ).
+                                                        GET TIME STAMP FIELD lv_timestamp.
+                                                        CONVERT TIME STAMP lv_timestamp TIME ZONE sy-zonlo into DATE lv_date1 TIME lv_time1.
+                                                        EXEC SQL.
+                                                            select :lv_date1 || :lv_time1
+                                                              into :lv_fact_from
+                                                              from dual
+                                                        ENDEXEC.
+                                                        lr_btdatefact->set_property( iv_attr_name = 'TIMESTAMP_FROM'
+                                                                                     iv_value = lv_timestamp ).
+                                                        lr_btdatefact->set_property( iv_attr_name = 'TIMESTAMP_TO'
+                                                                                     iv_value = lv_timestamp ).
+                                                        lr_core->modify( ).
+                                                        lr_tx = lr_btorder->get_transaction( ).
+                                                        if lr_tx->save( ) = abap_true.
+                                                            lr_tx->commit( ).
+                                                            CONCATENATE 'Задача №' lv_objid 'взята в работу' into lv_tmp_string separated by space.
+                                                            lr_global_messages->add_message( iv_msg_type = 'S'
+                                                                                             iv_msg_id = 'BL'
+                                                                                             iv_msg_number = '001'
+                                                                                             iv_msg_v1 = lv_tmp_string
+                                                                                             iv_show_only_once = abap_true ).
+                                                            CLEAR: ls_queue.
+                                                            select single *
+                                                               into ls_queue
+                                                               from zubrrsb_queue
+                                                              where object_guid = lv_objguid.
+                                                            if ls_queue is not initial.
+                                                                delete from zubrrsb_queue
+                                                                 where id = ls_queue-id.
+                                                                ls_queempl-id = ls_queue-id.
+                                                                ls_queempl-object_guid = ls_queue-object_guid.
+                                                                ls_queempl-partner = ls_queue-partner.
+                                                                ls_queempl-que_date = sy-datlo.
+                                                                ls_queempl-que_time = sy-timlo.
+                                                                ls_queempl-stat = 'Взята в работу'.
+                                                                modify zubrrsb_queempl from ls_queempl.
+                                                            endif.
+                                                            zcl_jsp_connect=>connect( ).
+                                                            EXEC SQL.
+                                                              EXECUTE PROCEDURE UBRR_SCORING_CB.Set_User ( in :lv_objid,
+                                                                                                           in :sy-uname,
+                                                                                                           in :lv_fact_from )
+                                                            ENDEXEC.
+                                                        endif.
+                                                    endif.
+                                                endif.
+                                            endif.
+                                            lr_act ?= lr_result->get_next( ).
+                                        enddo.
+                                    endif.
+                                    EH_ONREFRESH( ).
+                                    EXEC SQL.
+                                        SET CONNECTION DEFAULT
+                                    ENDEXEC.
+                                    EXEC SQL.
+                                      select to_char(sysdate,'YYYYMMDDHH24MISS')
+                                        into :ls_getwork-date_to
+                                        from dual
+                                    ENDEXEC.
+                                    ls_getwork-res_task = lv_objid.
+                                    insert into zubrrsb_getwork values ls_getwork.
+                                    RETURN.
+                                endif.
+                            endif.
+                        endif.
+                    endif.
+                endif.
+            endif.
+            lr_act ?= lr_result->get_next( ).
+        enddo.
+    endselect.
+    lr_global_messages->add_message( iv_msg_type = 'S'
+                                     iv_msg_id = 'BL'
+                                     iv_msg_number = '001'
+                                     iv_msg_v1 = 'Нет подходящих задач'
+                                     iv_show_only_once = abap_true ).
+    EH_ONREFRESH( ).
+    EXEC SQL.
+        SET CONNECTION DEFAULT
+    ENDEXEC.
+    EXEC SQL.
+      select to_char(sysdate,'YYYYMMDDHH24MISS')
+        into :ls_getwork-date_to
+        from dual
+    ENDEXEC.
+    insert into zubrrsb_getwork values ls_getwork.
+endmethod.
