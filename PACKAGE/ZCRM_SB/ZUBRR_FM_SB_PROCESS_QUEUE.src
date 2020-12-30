@@ -23,7 +23,8 @@
         lv_ups_value          type zubrr_upsvalue,
         lv_counter            type i.
 *---<<< ubrr 15.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
-  FIELD-SYMBOLS: <fs_queue_calc> type zubrrsb_queue_calc.
+  FIELD-SYMBOLS: <fs_queue_calc> TYPE zubrrsb_queue_calc,
+                 <fs_prequeue>   TYPE ZSTR_ZAA_SB_PREQUEUE.
 
 * Проверим назначеные задачи
   select *
@@ -128,27 +129,29 @@
   ENDEXEC.
 * Обрабатываем очередь
 *--->>> ubrr 10.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
-*         and o.process_type <> 'ZSB9'
+* select distinct alg.numberinlist, alg.algselecttask, o.header, o.grtp, o.date_plan_from
+* and o.process_type <> 'ZSB9'
+* and (o.process_type = alg.process_type or nvl(alg.process_type,' ') = ' ')
+* and (o.priority = alg.priority or alg.priority = '0')
+* and st.mandt = alg.mandt
+* TO_NUMBER(lpad(substr(alg.TIME_NORM, 1, 10), 10, '0'))
 *---<<< ubrr 10.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
   EXEC SQL.
     open rTask for
-       select distinct alg.numberinlist, alg.algselecttask, o.header, o.grtp, o.date_plan_from
-       from sapsr3.zubrrsb_algseltk alg,
-            sapsr3.zubrrsb_stgr_st st,
-            sapsr3.zsb_orders o
-       where alg.mandt = '300'
-         and st.mandt = alg.mandt
+      select distinct 0, 0, o.header, o.grtp, o.date_plan_from
+        from sapsr3.ZSB_ALGCOEFFOPT alg,
+             sapsr3.zubrrsb_stgr_st st,
+             sapsr3.zsb_orders o
+       where st.mandt = '300'
          and st.statgrup = '000001'
-         and o.stsma = st.stsma
-         and o.estat = st.estat
-         and o.prodtype = alg.prodtype
-         and (o.process_type = alg.process_type or nvl(alg.process_type,' ') = ' ')
-         and (o.priority = alg.priority or alg.priority = '0')
+         and o.stsma     = st.stsma
+         and o.estat     = st.estat
+         and nvl( replace(o.prodtype, ' '), decode( o.process_type, 'ZSB9', 'OAA', ' ' ) ) = alg.ALGSB
          and not exists (select 1
                            from sapsr3.zsb_orders o2
                           where o2.header = o.header
                             and o2.empl <> ' ')
-       order by alg.numberinlist, o.date_plan_from
+       order by o.date_plan_from
   ENDEXEC.
   do.
       select count(*)
@@ -158,7 +161,7 @@
           exec sql.
             close rTask
           endexec.
-          return.
+          exit.
       endif.
       exec sql.
         fetch next rTask into :ls_prequeue
@@ -169,8 +172,16 @@
         endexec.
         exit.
       endif.
+
+      CALL FUNCTION 'ZFM_SSV_SB_QUEUE_SET_PRIORITY'
+        EXPORTING IV_OBJECT_GUID   = ls_prequeue-HEADER
+        IMPORTING EV_NUMBERINLIST  = ls_prequeue-NUMBERINLIST.
+
       append ls_prequeue to lt_prequeue.
   enddo.
+
+  sort lt_prequeue by NUMBERINLIST descending.
+
   loop at lt_prequeue into ls_prequeue.
       select count(*)
         into lv_count
@@ -220,59 +231,29 @@
      endloop.
      if lv_fnd_order_l = 'X'.
        ls_prequeue-grtp = '095'.
+*--->>> ubrr 25.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+     else.
+       select single tp~grtp
+        from zsb_orders       as o
+        join crmd_order_index as i
+          on i~header = o~header
+        join hrp1001          as j
+          on j~OTJID        = i~sales_office  "-- точка продаж например: "O 50659773"
+        join zubrrsb_tp2gr    as tp
+          on tp~tp          = j~objid         "-- точка продаж в виде ид например: "50659773"
+        join zubrrsb_tpgr     as t
+          on t~grtp         = tp~grtp
+         and t~process_type = o~process_type
+        into ls_prequeue-grtp
+       where o~header    = i~header
+         and j~otype     = 'O'
+         and j~sclas     = 'O'
+         and j~endda     > sy-datum
+         and o~grtp      is null
+         and o~empl      is null
+         and o~header    = ls_prequeue-header. "-- гуид задачи
      endif.
-
-
-*   if lv_fnd_order_l ne 'X'.
-*     lv_compare_guid = ls_prequeue-header.
-*     EXEC SQL.
-*      open rTask for
-*        select distinct alg.numberinlist, alg.algselecttask, o.header, o.grtp, o.date_plan_from
-*          from sapsr3.zubrrsb_algseltk alg,
-*               sapsr3.zubrrsb_stgr_st st,
-*               sapsr3.zsb_orders o
-*         where alg.mandt = '300'
-*           and st.mandt = alg.mandt
-*           and st.statgrup = '000001'
-*           and o.stsma = st.stsma
-*           and o.estat = st.estat
-*           and o.prodtype = alg.prodtype
-*           and (o.process_type = alg.process_type or nvl(alg.process_type,' ') = ' ')
-*           and o.process_type <> 'ZSB9'
-*           and (o.priority = alg.priority or alg.priority = '0')
-*           and not exists (select 1
-*                             from sapsr3.zsb_orders o2
-*                            where o2.header = o.header
-*                              and o2.empl <> ' ')
-*           and o.header = :lv_compare_guid
-*      order by alg.numberinlist, o.date_plan_from
-*     ENDEXEC.
-*     do.
-*       select count(*)
-*         into lv_count
-*         from zubrrsb_queue.
-*       if lv_count = 0.
-*          exec sql.
-*            close rTask
-*          endexec.
-*          return.
-*       endif.
-*       exec sql.
-*         fetch next rTask into :ls_prequeue
-*       endexec.
-*       if sy-subrc ne 0.
-*         exec sql.
-*           close rTask
-*         endexec.
-*         exit.
-*       else.
-*         lv_fnd_order_l  = 'X'.
-*       endif.
-*     enddo.
-*     if lv_fnd_order_l ne 'X'.
-*       continue.
-*     endif.
-*   endif.
+*---<<< ubrr 25.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
   endif.
 *---<<< ubrr 26.03.2018 Севастьянов С.В. [17-1325] SAP CRM: Сценарии ОПП ФЛ
       try.
@@ -288,38 +269,119 @@
                 into (ls_queue-ID, ls_queue-PARTNER)
                 from zubrrsb_queue as q inner join
                      zubrrsb_empl as e on e~partner = q~partner inner join
-                     zubrrsb_tpgr as tp on tp~grtp = e~grtp
+                     zubrrsb_tpgr as tp on tp~grtp = e~grtp inner join
+                     zsb_orders as o on o~process_type = tp~process_type
                where q~object_guid = '00000000000000000000000000000000'
-                 and e~grtp = ls_prequeue-grtp
-                 and tp~algselecttask = ls_prequeue-algselecttask
+                 and o~header = ls_prequeue-header
+                 and o~empl   = ' '
+                 and e~grtp   = ls_prequeue-grtp
+*--->>> ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+                 and ( e~grtp = q~grtp or q~grtp = ' ' )
+*                 and tp~algselecttask = ls_prequeue-algselecttask
+*---<<< ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
                order by q~ID.
                   exit.
               endselect.
+
+              if ls_queue-ID is initial.
+                select q~ID q~PARTNER
+                  into (ls_queue-ID, ls_queue-PARTNER)
+                  from zubrrsb_queue as q inner join
+                       zubrrsb_empl as e on e~partner = q~partner inner join
+                       zsb_grtp_to_grtp as g on g~grtp = e~grtp inner join
+                       zubrrsb_tpgr as tp on tp~grtp = g~to_grtp inner join
+                       zsb_orders as o on o~process_type = tp~process_type
+                 where q~object_guid = '00000000000000000000000000000000'
+                   and o~header = ls_prequeue-header
+                   and o~empl   = ' '
+                   and e~grtp   = ls_prequeue-grtp
+*--->>> ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+                   and e~grtp = q~grtp
+                   and q~grtp in ('994', '995') " Все заявки
+*                 and tp~algselecttask = ls_prequeue-algselecttask
+*---<<< ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+                  order by q~ID.
+                  exit.
+                endselect.
+              endif.
+
               if ls_queue-ID is initial.
                   select q~ID q~PARTNER
                     into (ls_queue-ID, ls_queue-PARTNER)
                     from zubrrsb_queue as q inner join
                          zubrrsb_add_grtp as e on e~partner = q~partner inner join
-                         zubrrsb_tpgr as tp on tp~grtp = e~grtp
+                         zubrrsb_tpgr as tp on tp~grtp = e~grtp inner join
+                         zsb_orders as o on o~process_type = tp~process_type
                    where q~object_guid = '00000000000000000000000000000000'
+                     and o~header = ls_prequeue-header
                      and e~grtp = ls_prequeue-grtp
-                     and tp~algselecttask = ls_prequeue-algselecttask
+*--->>> ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+                     and ( e~grtp = q~grtp or q~grtp = ' ' )
+*                     and tp~algselecttask = ls_prequeue-algselecttask
+*---<<< ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
                    order by q~ID.
                       exit.
                   endselect.
+
+                  if ls_queue-ID is initial.
+                    select q~ID q~PARTNER
+                      into (ls_queue-ID, ls_queue-PARTNER)
+                      from zubrrsb_queue as q inner join
+                           zubrrsb_add_grtp as e on e~partner = q~partner inner join
+                           zsb_grtp_to_grtp as g on g~grtp = e~grtp inner join
+                           zubrrsb_tpgr as tp on tp~grtp = g~to_grtp inner join
+                           zsb_orders as o on o~process_type = tp~process_type
+                     where q~object_guid = '00000000000000000000000000000000'
+                       and o~header = ls_prequeue-header
+                       and e~grtp = ls_prequeue-grtp
+*--->>> ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+                       and e~grtp = q~grtp
+                       and q~grtp in ('994', '995') " Все заявки
+*                       and tp~algselecttask = ls_prequeue-algselecttask
+*---<<< ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+                      order by q~ID.
+                      exit.
+                    endselect.
+                  endif.
               else.
                   select q~ID q~PARTNER
                     into (ls_queue-ID, ls_queue-PARTNER)
                     from zubrrsb_queue as q inner join
                          zubrrsb_add_grtp as e on e~partner = q~partner inner join
-                         zubrrsb_tpgr as tp on tp~grtp = e~grtp
+                         zubrrsb_tpgr as tp on tp~grtp = e~grtp inner join
+                         zsb_orders as o on o~process_type = tp~process_type
                    where q~object_guid = '00000000000000000000000000000000'
+                     and o~header = ls_prequeue-header
                      and e~grtp = ls_prequeue-grtp
-                     and tp~algselecttask = ls_prequeue-algselecttask
+*--->>> ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+                     and ( e~grtp = q~grtp or q~grtp = ' ' )
+*                     and tp~algselecttask = ls_prequeue-algselecttask
+*---<<< ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
                      and q~ID < ls_queue-ID
                    order by q~ID.
                       exit.
                   endselect.
+                  if ls_queue-ID is initial.
+                    select q~ID q~PARTNER
+                      into (ls_queue-ID, ls_queue-PARTNER)
+                      from zubrrsb_queue as q inner join
+                           zubrrsb_add_grtp as e on e~partner = q~partner inner join
+                           zsb_grtp_to_grtp as g on g~grtp = e~grtp inner join
+                           zubrrsb_tpgr as tp on tp~grtp = g~to_grtp inner join
+                           zsb_orders as o on o~process_type = tp~process_type
+                     where q~object_guid = '00000000000000000000000000000000'
+                       and o~header = ls_prequeue-header
+                       and e~grtp = ls_prequeue-grtp
+*--->>> ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+                       and e~grtp = q~grtp
+                       and q~grtp in ('994', '995') " Все заявки
+*                       and tp~algselecttask = ls_prequeue-algselecttask
+*---<<< ubrr 23.12.2020 Севастьянов С.В. [20-80381] Реализация динамической очереди распределения заявок в SAP CRM (Разработка)
+                       and q~ID < ls_queue-ID
+                     order by q~ID.
+                        exit.
+                     endselect.
+                  endif.
               endif.
               if ls_queue is not initial.
                   CLEAR: lt_header_guid, lt_orderadm_h, lt_partner, lv_anketaid.
