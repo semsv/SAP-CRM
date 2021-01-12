@@ -1,0 +1,84 @@
+﻿FUNCTION ZFM_SSV_SB_QUEUE_SET_PRIORITY.
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"  IMPORTING
+*"     REFERENCE(IV_OBJECT_GUID) TYPE  CRMT_OBJECT_GUID
+*"  EXPORTING
+*"     REFERENCE(EV_NUMBERINLIST) TYPE  ZTYPE_GPR_CESSNUM
+*"----------------------------------------------------------------------
+
+  zcl_jsp_connect=>connect( ).
+
+  data: lv_prodype         type zalgsb,
+        lv_time_norm_str   type string,
+        lv_new_request_str type string,
+        lv_tn_value        type zed_sb_currvalue,
+        lv_nr_value        type zed_sb_currvalue.
+
+  data: lr_expt_nsql       type ref to cx_sy_native_sql_error,
+        lv_err             type text1024,
+        lv_msg             type string,
+        LV_OBJECT_ID       TYPE CRMT_OBJECT_ID_DB,
+        LV_PROCESS_TYPE    TYPE CRMT_PROCESS_TYPE_DB,
+        LV_ANKETA_ID       TYPE CRMT_EXTERNAL_ACTIVITY_ID.
+
+  select single prodtype OBJECT_ID PROCESS_TYPE EXTERN_ACT_ID
+    into (lv_prodype, LV_OBJECT_ID, LV_PROCESS_TYPE, LV_ANKETA_ID)
+    from zsb_orders
+   where header = IV_OBJECT_GUID.
+
+  IF lv_prodype is initial and LV_PROCESS_TYPE = 'ZSB9'.
+    lv_prodype = 'OAA'.
+  ENDIF.
+
+  clear: lv_tn_value, lv_nr_value.
+  if sy-subrc eq 0.
+    select single time_norm new_request
+      into (lv_time_norm_str, lv_new_request_str)
+      from zsb_algcoeffopt
+     where algsb = lv_prodype.
+
+    if sy-subrc eq 0.
+      try.
+        move lv_time_norm_str to lv_tn_value.
+      catch cx_sy_conversion_error.
+        lv_tn_value = 1.
+        move lv_tn_value to lv_time_norm_str.
+      endtry.
+      try.
+        move lv_new_request_str to lv_nr_value.
+      catch cx_sy_conversion_error.
+        lv_nr_value = '0.5'.
+        move lv_nr_value to lv_new_request_str.
+      endtry.
+    endif.
+  endif.
+
+  try.
+    exec sql.
+     select round(sysdate - plan_date_start)*60*24 +
+            round(
+           ( (sysdate - plan_date_start)*60*24 / to_number(:lv_time_norm_str, '9999999999.99')
+             + to_number(:lv_new_request_str, '9999999999.99')
+           )*100  )
+       into :EV_NUMBERINLIST
+       from ubrr_scoring_cb_anketa
+      where object_id    = :LV_OBJECT_ID
+        and anketa_id    = :LV_ANKETA_ID
+        and process_type = :LV_PROCESS_TYPE
+    endexec.
+  catch cx_sy_native_sql_error into lr_expt_nsql.
+    lv_msg = lr_expt_nsql->sqlmsg.
+    lv_err = '-1'.
+    EV_NUMBERINLIST = 0.
+  catch cx_root.
+    EV_NUMBERINLIST = 0.
+  endtry.
+
+  exec sql.
+    set connection default
+  endexec.
+
+
+
+ENDFUNCTION.
