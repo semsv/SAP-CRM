@@ -1,0 +1,5 @@
+SELECT SINGLE name_text INTO fio FROM usr21
+      JOIN adrp
+       ON usr21~persnumber = adrp~persnumber
+         WHERE
+           bname = sy-uname.
