@@ -1,0 +1,93 @@
+DATA : it_f type CRMT_MKTBP_BP_VALUES_T,
+
+       it_1 type TABLE OF CRMT_MKTBP_BP_VALUES,
+
+       it_2 type TABLE OF CRMT_MKTBP_ATTRIBUTE_VALUES,
+
+       wa_1 type CRMT_MKTBP_BP_VALUES,
+
+       wa_2 type CRMT_MKTBP_ATTRIBUTE_VALUES.
+
+DATA : ET_RETURN type TABLE OF BAPIRET2.
+
+wa_2-ATNAME         = ‘HOBBIES’.
+
+*wa_2-ATWRT          = ‘soccer’.
+
+wa_2-ATWRT           = ‘golf’.
+
+APPEND wa_2 to it_2.
+
+wa_2-ATNAME         = ‘FZ_BYKE_SET’.
+
+*wa_2-ATWRT          = ‘childern’.
+
+wa_2-ATWRT          = ‘youngers’.
+
+APPEND wa_2 to it_2.
+
+wa_1-PARTNER_GUID    = ‘005056C000081EE48DE3BD1167EF9685’.
+
+wa_1-PARTNER             = ‘0000423192’.
+
+wa_1-ATTRIBUTE_SET   = ‘INTERESTS’.
+
+wa_1-ALLOCVALUES     = it_2.
+
+append wa_1 to it_1.
+
+wa_1-PARTNER_GUID   = ‘005056C000081EE48DE3BD1167EF9685’.
+
+wa_1-PARTNER            = ‘0000423192’.
+
+wa_1-ATTRIBUTE_SET  = ‘FZ_BYKE_SET’.
+
+wa_1-ALLOCVALUES    = it_2.
+
+append wa_1 to it_1.
+
+CALL FUNCTION ‘CRM_MKTBP_SAVE_BP_LIST’
+
+   EXPORTING
+
+    IV_MSA                              = ‘ ‘
+
+    IV_COMMIT                        = ‘X’
+
+    it_alloclist_bp                      = it_1
+
+    IV_CONVERT_VALUES       = ‘X’
+
+    IV_OBJTYP                         = ‘BUT000’
+
+    IV_SET_LOCK                     = ‘X’
+
+    IV_WRITE_ALE                   = ‘X’
+
+  TABLES
+
+    ET_RETURN                       = ET_RETURN
+
+           .
+
+CALL FUNCTION ‘BAPI_TRANSACTION_COMMIT’
+
+  EXPORTING
+
+    WAIT              = ‘X’
+
+*  IMPORTING
+
+*    RETURN        =
+
+           .
+
+IF sy-subrc = 0.
+
+  MESSAGE ‘MARKETING’ ATTRIBUTES SUCCESSFULLY CREATED FOR GIVEN BP’ TYPE ‘S’.
+
+ELSE .
+
+  MESSAGE ‘MARKETING ATTRIBUTES NOT CREATED FOR GIVEN BP’ TYPE ‘E’.
+
+ENDIF.
