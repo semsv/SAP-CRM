@@ -1,0 +1,1866 @@
+*&---------------------------------------------------------------------*
+*&  Include           ZPR_UTL_SSV_CREATE_PARTNER_I01
+*&---------------------------------------------------------------------*
+*Global value
+DATA: gv_struct_name  TYPE dd02l-tabname
+    , gv_repl         TYPE string
+    , gv_augrp        TYPE char4
+    .
+
+*Global table
+DATA: gt_partner      TYPE STANDARD TABLE OF zstr_ssv_create_bp
+    , gt_show         TYPE STANDARD TABLE OF zstr_ssv_bp_create_show
+    , gt_anketa       TYPE STANDARD TABLE OF zstr_ssv_create_anketa
+    .
+
+*Global Structure
+DATA: gs_partner      TYPE zstr_ssv_create_bp
+    , gs_anketa       TYPE zstr_ssv_create_anketa
+    .
+
+*Global Reference
+DATA: gr_cl_grid      TYPE REF TO cl_gui_alv_grid
+    , gr_cl_cont      TYPE REF TO cl_gui_custom_container
+    , gr_cl_edit_cont TYPE REF TO cl_gui_custom_container
+    , gr_cl_edit      TYPE REF TO cl_gui_textedit
+    .
+
+*----------------------------------------------------------------------*
+***INCLUDE ZPR_UTL_SSV_CREATE_PARTNER_I01 .
+*----------------------------------------------------------------------*
+*&---------------------------------------------------------------------*
+*&      Module  USER_COMMAND_0100  INPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE user_command_0100 INPUT.
+  CASE sy-ucomm.
+    WHEN 'SHOW'.
+      gv_struct_name = 'ZSTR_SSV_BP_CREATE_SHOW'.
+      CALL SCREEN 200.
+
+    WHEN 'PRINT'.
+
+      DATA lv_answer TYPE char1.
+
+      CLEAR gt_partner.
+
+      CALL FUNCTION 'POPUP_TO_CONFIRM'
+        EXPORTING
+          titlebar              = 'Внимание!'
+          text_question         = 'Реплицировать клиентов в TWR?'
+          text_button_1         = 'Да'(001)
+          text_button_2         = 'Нет'(002)
+          display_cancel_button = 'X'
+        IMPORTING
+          answer                = lv_answer
+        EXCEPTIONS
+          text_not_found        = 1
+          OTHERS                = 2.
+
+      IF lv_answer = '1'.
+        gv_repl = 'TWR'.
+      ELSEIF lv_answer = 'A'.
+        EXIT.
+      ENDIF.
+
+      CLEAR lv_answer.
+
+      CALL FUNCTION 'POPUP_TO_CONFIRM'
+        EXPORTING
+          titlebar              = 'Внимание!'
+          text_question         = 'Клиенты какого банка?'
+          text_button_1         = 'УБРиР'(001)
+          text_button_2         = 'ВУЗ Банк'(002)
+          display_cancel_button = 'X'
+        IMPORTING
+          answer                = lv_answer
+        EXCEPTIONS
+          text_not_found        = 1
+          OTHERS                = 2.
+
+      IF lv_answer = '1'.
+        gv_augrp = 'UBRR'.
+      ELSEIF lv_answer = '2'.
+        gv_augrp = 'VUZB'.
+      ELSEIF lv_answer = 'A'.
+        EXIT.
+      ENDIF.
+
+      CLEAR lv_answer.
+
+      PERFORM in_excel.
+
+      gv_struct_name = 'zstr_ssv_create_bp'.
+
+      IF gt_partner IS NOT INITIAL.
+        CALL SCREEN 200.
+      ENDIF.
+    WHEN 'CREATE_ANK'.
+      clear: gt_partner, gt_anketa.
+      PERFORM in_excel2.
+      gv_struct_name = 'ZSTR_SSV_CREATE_ANKETA'.
+      IF gt_anketa IS NOT INITIAL.
+        CALL SCREEN 200.
+      ENDIF.
+    WHEN 'BACK'.
+      CALL SCREEN 100.
+
+    WHEN 'EXIT'.
+      LEAVE PROGRAM.
+
+    WHEN OTHERS.
+
+  ENDCASE.
+  CLEAR: gv_repl, gv_augrp.
+ENDMODULE.                 " USER_COMMAND_0100  INPUT
+
+*&---------------------------------------------------------------------*
+*&      Form  in_excel2
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM
+  in_excel2.
+  TYPES:
+  BEGIN OF lty_exel,
+        ANKETA_ID	                   TYPE STRING,
+        ANKETA_FAM                   TYPE STRING,
+        ANKETA_IM	                   TYPE STRING,
+        ANKETA_OT  	                 TYPE STRING,
+        ANKETA_BIRTH_DATE	           TYPE STRING,
+        ANKETA_BIRTHPLACE	           TYPE STRING,
+        ANKETA_SEX                   TYPE STRING,
+        ANKETA_CITIZENSHIP           TYPE STRING,
+        ANKETA_SERIESPASSPORT	       TYPE STRING,
+        ANKETA_NUMBERPASSPORT	       TYPE STRING,
+        ANKETA_WHOPASSPORT           TYPE STRING,
+        ANKETA_DATEPASSPORT	         TYPE STRING,
+        ANKETA_REGION_REGISTR	       TYPE STRING,
+        ANKETA_DATEREGISTR           TYPE STRING,
+        ANKETA_REGION_RESIDE         TYPE STRING,
+        ANKETA_MARRIAGE_STATE	       TYPE STRING,
+        ANKETA_NAMEORG               TYPE STRING,
+        ANKETA_REGION_ORG	           TYPE STRING,
+        ANKETA_BRANCH	               TYPE STRING,
+        ANKETA_TIMEORG               TYPE STRING,
+        ANKETA_POST	                 TYPE STRING,
+        ANKETA_INCOME1               TYPE STRING,
+        ANKETA_INCOME3               TYPE STRING,
+        ANKETA_HOUSETEL	             TYPE STRING,
+        ANKETA_WORKTEL               TYPE STRING,
+        ANKETA_STATUS_CRED           TYPE STRING,
+        ANKETA_CREATEDATE  	         TYPE STRING,
+        ANKETA_CREATEUSER	           TYPE STRING,
+        UBRR_ANKETA_CREDITSUM	       TYPE STRING,
+        UBRR_ANKETA_SROK             TYPE STRING,
+        UBRR_ANKETA_FIOCHANGE	       TYPE STRING,
+        UBRR_ANKETA_REGINDEX         TYPE STRING,
+        UBRR_ANKETA_REGCITY	         TYPE STRING,
+        UBRR_ANKETA_REGSTREET	       TYPE STRING,
+        UBRR_ANKETA_REGHOUSE         TYPE STRING,
+        UBRR_ANKETA_REGFLAT	         TYPE STRING,
+        UBRR_ANKETA_LIFEINDEX	       TYPE STRING,
+        UBRR_ANKETA_LIFECITY         TYPE STRING,
+        UBRR_ANKETA_LIFESTREET       TYPE STRING,
+        UBRR_ANKETA_LIFEHOUSE	       TYPE STRING,
+        UBRR_ANKETA_LIFEFLAT         TYPE STRING,
+        UBRR_ANKETA_ORGSTREET	       TYPE STRING,
+        UBRR_ANKETA_ORGHOUSE         TYPE STRING,
+        UBRR_ANKETA_ORGOFFICE	       TYPE STRING,
+        UBRR_ANKETA_EMAIL	           TYPE STRING,
+        UBRR_ANKETA_APPOINT          TYPE STRING,
+        UBRR_ANKETA_EQUALREGFACT     TYPE STRING,
+        UBRR_ANKETA_PSYCHOSTATE	     TYPE STRING,
+        UBRR_ANKETA_POSTNAME         TYPE STRING,
+        UBRR_ANKETA_BKI_SENDDATE     TYPE STRING,
+        UBRR_ANKETA_BKI_GET	         TYPE STRING,
+        UBRR_ANKETA_BKI_GETDATE	     TYPE STRING,
+        BP_ID                        TYPE STRING,
+        UBRR_ANKETA_INN_ORG	         TYPE STRING,
+        UBRR_ANKETA_TYPE             TYPE STRING,
+*        ANKETA_RELATION_ID           TYPE STRING,
+        ANKETA_RELATION_MOBILTEL1	   TYPE STRING,
+        ANKETA_RELATION_MOBILTEL2	   TYPE STRING,
+        ANKETA_CHANGE_FLAG           TYPE STRING,
+        ANKETA_CESSION_ASSIGN        TYPE STRING,
+    END OF lty_exel.
+
+    DATA: lt_tab_exl               TYPE STANDARD TABLE OF lty_exel
+        , lt_filetable             TYPE filetable  " таблица для получения списка путей и имён файлов
+        , lv_filename              TYPE string
+        , lv_filter                TYPE string     " строка для фильтрации выбираемых файлов.
+        , lv_rc                    TYPE i
+        , ls_file_table            TYPE file_table " структура для таблицы lt_filetable  для работы с путём и именами выделеных файлов
+        , application              TYPE ole2_object
+        , workbooks                TYPE ole2_object
+        , workbook                 TYPE ole2_object
+        , worksheets               TYPE ole2_object
+        , worksheet                TYPE ole2_object
+        , cell                     TYPE ole2_object
+        , lv_buf(30)               TYPE c
+        , borders                  TYPE ole2_object
+        , lv_filepath              TYPE string
+        , lv_path2                 TYPE string     " имя 2 файла при выгрузке в ексель
+        , lv_path                  TYPE string     " имя файла при выгрузке в ексель
+        , lv_ubrr_anketa_creditsum TYPE text1024
+        , lv_ANKETA_SERIESPASSPORT TYPE text1024
+        , lv_ANKETA_NUMBERPASSPORT TYPE text1024
+        , lv_UBRR_ANKETA_FIOCHANGE TYPE text1024
+        , lv_UBRR_ANKETA_OLDFIO    TYPE text1024
+        , lv_ANKETA_CITIZENSHIP    TYPE text1024
+        , lv_anketa_id             TYPE text20
+        , lv_appoint               TYPE text10
+        , lv_null                  TYPE char1
+        , lv_null2                 TYPE char1
+        , lv_new_anketa_id         TYPE text20
+        , lv_prc_ret_errcode       TYPE text1024
+        , lv_prc_ret_value         TYPE text1024
+        , lv_prc_ret_message       TYPE text1024
+        , lr_expt_nsql             TYPE REF TO cx_sy_native_sql_error
+        , lv_type_1                TYPE dd01v-datatype
+        , lv_save_value            TYPE text1024
+        .
+
+  FIELD-SYMBOLS: <fs>  TYPE lty_exel.
+
+  CALL METHOD cl_gui_frontend_services=>file_open_dialog       " выводим окно диалога выбора файлов
+    EXPORTING window_title      = 'Выберите файлы для загрузки'" заголовок окна
+              file_filter       = lv_filter                    " выбираемый фильтр
+              initial_directory =  'C:\'                       " начальная директория
+*              multiselection    = 'Х'                         " разрешения на выбор нескольких файлов
+    CHANGING  file_table        = lt_filetable                 " таблица содержащая пути и и мена файлов
+              rc                = lv_rc                        " значение ошибки
+    EXCEPTIONS
+    OTHERS            = 1.
+
+  LOOP AT lt_filetable INTO ls_file_table.
+*    EXIT.
+ "создаём OLE объёкты открываем файл
+    CREATE OBJECT application 'excel.application'. "создаём экземпляр апликации
+    SET PROPERTY OF application 'Visible'     = 0." скрываем от пользователя (изменить на 0 для сокрытия)
+    GET PROPERTY OF application 'Workbooks'   = workbooks. " создаём библиотеку документов ексель
+    CALL METHOD OF workbooks 'Open' = workbook
+      EXPORTING
+      #1 = ls_file_table. "открываем один документ с путём из текущей строки таблицы filetable
+
+    SET PROPERTY OF application 'DecimalSeparator' = '.'. " установка десятичного разделителя
+    SET PROPERTY OF application 'UseSystemSeparators' = 'false' .
+    GET PROPERTY OF workbook    'Worksheets'  = worksheets. "Создаём библиотеку вкладок
+
+    CALL METHOD OF worksheets 'Select'
+      EXPORTING
+      #1 = 1. "выбираем вкладка(лист) с опред номером( первую) переходит в АКТИВ воркшеет
+
+    GET PROPERTY OF workbook    'ActiveSheet' = worksheet. "выбираем активную вкладку
+    GET PROPERTY OF worksheet   'Cells'       = cell     exporting  #1 = 1 #2 = 1."Устанавливаем значения активной ячейки
+    CALL METHOD OF cell 'Text' = lv_buf . "считываем значения из ячейки в буфер
+    GET PROPERTY OF worksheet   'ROWS'        = borders  exporting  #1 = 1.
+    CALL METHOD OF borders 'DELETE'."Вставка в верху одной строки для "шапки" таблицы
+    GET PROPERTY OF worksheet   'ROWS'        = borders  exporting  #1 = 1.
+    CALL METHOD OF borders 'DELETE'."Вставка в верху одной строки для "шапки" таблицы
+
+    CALL FUNCTION 'SO_SPLIT_FILE_AND_PATH'
+      EXPORTING
+        full_name     = ls_file_table
+      IMPORTING
+        stripped_name = lv_filename
+        file_path     = lv_filepath.
+
+    TRANSLATE lv_filename USING '._'.
+    CONCATENATE lv_filepath lv_filename '_copy.TXT'
+    INTO lv_path .
+
+    SET PROPERTY OF application 'DisplayAlerts' = 0.
+    CALL METHOD OF workbook 'SaveAS'
+      EXPORTING
+      #1 = lv_path
+      #2 = -4158.                       " параметр для сохранения как txt c разделителем "-4143." параметр для сохранения в стандартный ексель
+**** Работа со второй вкладкой (нач)
+*    CALL METHOD OF worksheets 'Item' = worksheet EXPORTING #1 = 2.
+*    CALL METHOD OF worksheet 'SELECT'. "выбираем вкладка(лист) с опред номером( вторую ) переходит в АКТИВ воркшеет
+**    GET PROPERTY OF workbook    'ActiveSheet' = worksheet. "выбираем активную вкладку
+*    GET PROPERTY OF worksheet   'Cells'       = cell     exporting  #1 = 1 #2 = 1."Устанавливаем значения активной ячейки
+*    CALL METHOD OF cell 'Text' = lv_buf . "считываем значения из ячейки в буфер
+*    GET PROPERTY OF worksheet   'ROWS'        = borders  exporting  #1 = 1.
+*    CALL METHOD OF borders 'DELETE'."Вставка в верху одной строки для "шапки" таблицы
+*    CONCATENATE lv_filepath lv_filename '_copy2.TXT' INTO lv_path2.
+*    SET PROPERTY OF application 'DisplayAlerts' = 0.
+*    CALL METHOD OF workbook 'SaveAS'
+*      EXPORTING
+*      #1 = lv_path2
+*      #2 = -4158.                       " параметр для сохранения как txt c разделителем "-4143." параметр для сохранения в стандартный ексель
+**** Работа со второй вкладкой (кон)
+    CALL METHOD OF application 'QUIT' . " выходим из апликации
+    FREE OBJECT     application.        "закрываем объект апликации с удалением связи
+
+    cl_gui_frontend_services=>gui_upload(
+      EXPORTING
+         filename = lv_path
+         filetype = 'ASC'
+         has_field_separator = '#'
+        " dat_mode = 'X'
+      CHANGING
+        data_tab = lt_tab_exl
+      EXCEPTIONS
+      OTHERS = 99 ).
+    if sy-subrc ne 0.
+      clear lt_tab_exl.
+      data: lv_excel_filename type RLGRAP-FILENAME,
+            lv_curr_tab_idx   type sytabix,
+            lv_curr_row_idx   type sytabix,
+            lt_excel_data     type standard table of ZALSMEX_TABLINE,
+            lr_data_descr     type ref to cl_abap_structdescr,
+            lv_stop           type xfeld,
+            lv_anketa_create  type abap_bool,
+            ls_data           type lty_exel.
+      FIELD-SYMBOLS:
+            <ls_component>    LIKE LINE OF cl_abap_structdescr=>components,
+            <lv_value>        TYPE ANY,
+            <fs_data>         TYPE ZALSMEX_TABLINE.
+      MOVE ls_file_table to lv_excel_filename.
+      CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+        EXPORTING FILENAME    = lv_excel_filename
+                  I_BEGIN_COL = 1
+                  I_BEGIN_ROW = 3
+                  I_END_COL   = 50
+                  I_END_ROW   = 100000
+        TABLES    INTERN      = lt_excel_data
+        EXCEPTIONS OTHERS = 99.
+      if sy-subrc eq 0.
+        lr_data_descr ?= cl_abap_typedescr=>describe_by_data( ls_data ).
+        lv_curr_row_idx = 1.
+        DO.
+          lv_stop = 'X'.
+          LOOP AT lr_data_descr->components ASSIGNING <ls_component>.
+            lv_curr_tab_idx = sy-tabix.
+            READ TABLE lt_excel_data assigning <fs_data> WITH KEY COL = lv_curr_tab_idx ROW = lv_curr_row_idx.
+            if sy-subrc eq 0.
+              ASSIGN COMPONENT <ls_component>-name OF STRUCTURE ls_data TO <lv_value>.
+              <lv_value> = <fs_data>-value.
+              clear lv_stop.
+            endif.
+          ENDLOOP.
+          if lv_stop eq 'X'.
+            EXIT.
+          else.
+            append ls_data TO lt_tab_exl.
+            lv_curr_row_idx = lv_curr_row_idx + 1.
+          endif.
+        ENDDO.
+      endif.
+    endif.
+
+    CALL METHOD cl_gui_frontend_services=>file_delete
+      EXPORTING
+        filename             = lv_path
+      CHANGING
+        rc                   = lv_rc
+      EXCEPTIONS
+        file_delete_failed   = 1
+        cntl_error           = 2
+        error_no_gui         = 3
+        file_not_found       = 4
+        access_denied        = 5
+        unknown_error        = 6
+        not_supported_by_gui = 7
+        wrong_parameter      = 8.
+
+*     cl_gui_frontend_services=>gui_upload(
+*      EXPORTING
+*         filename = lv_path2
+*         filetype = 'ASC'
+*         has_field_separator = '#'
+*        " dat_mode = 'X'
+*      CHANGING
+*        data_tab = lt_tab_exl2
+*      EXCEPTIONS
+*      OTHERS = 99 ).
+
+*    CALL METHOD cl_gui_frontend_services=>file_delete
+*      EXPORTING
+*        filename             = lv_path2
+*      CHANGING
+*        rc                   = lv_rc
+*      EXCEPTIONS
+*        file_delete_failed   = 1
+*        cntl_error           = 2
+*        error_no_gui         = 3
+*        file_not_found       = 4
+*        access_denied        = 5
+*        unknown_error        = 6
+*        not_supported_by_gui = 7
+*        wrong_parameter      = 8.
+
+    CLEAR gt_anketa.
+    CLEAR gs_anketa.
+
+    lv_curr_row_idx = 3.
+    LOOP AT lt_tab_exl ASSIGNING <fs>.
+
+      IF <fs> IS INITIAL.
+        EXIT.
+      ENDIF.
+
+      lv_ubrr_anketa_creditsum = <fs>-UBRR_ANKETA_CREDITSUM.
+      lv_ANKETA_SERIESPASSPORT = <fs>-ANKETA_SERIESPASSPORT.
+      lv_ANKETA_NUMBERPASSPORT = <fs>-ANKETA_NUMBERPASSPORT.
+      lv_appoint               = <fs>-UBRR_ANKETA_APPOINT.
+      lv_UBRR_ANKETA_FIOCHANGE = <fs>-UBRR_ANKETA_FIOCHANGE.
+      lv_UBRR_ANKETA_OLDFIO    = ''.
+      lv_ANKETA_CITIZENSHIP    = <fs>-ANKETA_CITIZENSHIP.
+
+      CLEAR lv_prc_ret_value.
+      REPLACE ALL OCCURRENCES OF REGEX '/' IN <fs>-ANKETA_BIRTH_DATE WITH '.'.
+      TRY.
+        EXEC SQL.
+          SELECT TO_CHAR(TO_DATE(:<fs>-ANKETA_BIRTH_DATE, 'dd.mm.yyyy'), 'YYYYMMDD')
+            INTO :<fs>-ANKETA_BIRTH_DATE
+            FROM DUAL
+        ENDEXEC.
+      CATCH cx_sy_native_sql_error  INTO lr_expt_nsql.
+        lv_prc_ret_message = lr_expt_nsql->sqlmsg.
+        lv_prc_ret_value   = '1'.
+      ENDTRY.
+      if lv_prc_ret_value eq '1'.
+        REPLACE ALL OCCURRENCES OF REGEX '/' IN <fs>-ANKETA_BIRTH_DATE WITH space.
+        CALL FUNCTION 'NUMERIC_CHECK'
+          EXPORTING
+            string_in = <fs>-ANKETA_BIRTH_DATE
+          IMPORTING
+            htype     = lv_type_1.
+      endif.
+
+      CLEAR lv_prc_ret_value.
+      REPLACE ALL OCCURRENCES OF REGEX '/' IN <fs>-ANKETA_DATEPASSPORT WITH '.'.
+      TRY.
+        EXEC SQL.
+          SELECT TO_CHAR(TO_DATE(:<fs>-ANKETA_DATEPASSPORT, 'dd.mm.yyyy'), 'YYYYMMDD')
+            INTO :<fs>-ANKETA_DATEPASSPORT
+            FROM DUAL
+        ENDEXEC.
+      CATCH cx_sy_native_sql_error  INTO lr_expt_nsql.
+        lv_prc_ret_message = lr_expt_nsql->sqlmsg.
+        lv_prc_ret_value   = '1'.
+      ENDTRY.
+      if lv_prc_ret_value eq '1'.
+        MOVE <fs>-ANKETA_DATEPASSPORT TO lv_save_value.
+        REPLACE ALL OCCURRENCES OF REGEX '.' IN <fs>-ANKETA_DATEPASSPORT WITH space.
+        CALL FUNCTION 'NUMERIC_CHECK'
+          EXPORTING
+            string_in = <fs>-ANKETA_DATEPASSPORT
+          IMPORTING
+            htype     = lv_type_1.
+        IF <fs>-ANKETA_DATEPASSPORT IS INITIAL.
+          MOVE lv_save_value TO <fs>-ANKETA_DATEPASSPORT.
+        ENDIF.
+      endif.
+
+      CLEAR lv_prc_ret_value.
+      REPLACE ALL OCCURRENCES OF REGEX '/' IN <fs>-UBRR_ANKETA_BKI_GETDATE WITH '.'.
+      TRY.
+        EXEC SQL.
+          SELECT TO_CHAR(TO_DATE(:<fs>-UBRR_ANKETA_BKI_GETDATE, 'dd.mm.yyyy'), 'YYYYMMDD')
+            INTO :<fs>-UBRR_ANKETA_BKI_GETDATE
+            FROM DUAL
+        ENDEXEC.
+      CATCH cx_sy_native_sql_error  INTO lr_expt_nsql.
+        lv_prc_ret_message = lr_expt_nsql->sqlmsg.
+        lv_prc_ret_value   = '1'.
+      ENDTRY.
+
+      if lv_prc_ret_value eq '1'.
+        REPLACE ALL OCCURRENCES OF REGEX '.' IN <fs>-UBRR_ANKETA_BKI_GETDATE WITH space.
+        CALL FUNCTION 'NUMERIC_CHECK'
+          EXPORTING
+            string_in = <fs>-UBRR_ANKETA_BKI_GETDATE
+          IMPORTING
+            htype     = lv_type_1.
+      endif.
+
+      if :<fs>-ANKETA_CHANGE_FLAG eq 'НЕТ'.
+        :<fs>-ANKETA_CHANGE_FLAG = '0'.
+      elseif :<fs>-ANKETA_CHANGE_FLAG eq 'ДА'.
+        :<fs>-ANKETA_CHANGE_FLAG = '1'.
+      endif.
+
+      if :<fs>-ubrr_anketa_psychostate eq 'НЕТ'.
+        :<fs>-ubrr_anketa_psychostate = '0'.
+      elseif :<fs>-ubrr_anketa_psychostate eq 'ДА'.
+        :<fs>-ubrr_anketa_psychostate = '1'.
+      endif.
+
+      CALL FUNCTION 'NUMERIC_CHECK'
+        EXPORTING
+          string_in = :<fs>-ANKETA_CHANGE_FLAG
+        IMPORTING
+          htype     = lv_type_1.
+      if lv_type_1 ne 'NUMC'.
+        :<fs>-ANKETA_CHANGE_FLAG = '0'.
+      endif.
+* Преобразование даты в формат SAP
+      REPLACE ALL OCCURRENCES OF REGEX '/' IN <fs>-ANKETA_DATEREGISTR WITH '.'.
+      CALL FUNCTION 'CONVERT_DATE_TO_INTERNAL'
+        EXPORTING
+          date_external = <fs>-ANKETA_DATEREGISTR
+        IMPORTING
+          date_internal = <fs>-ANKETA_DATEREGISTR
+        EXCEPTIONS
+          DATE_EXTERNAL_IS_INVALID = 1
+          OTHERS                   = 2.
+      if sy-subrc ne 0.
+        CLEAR <fs>-ANKETA_DATEREGISTR.
+      endif.
+* Преобразование даты в формат SAP
+      REPLACE ALL OCCURRENCES OF REGEX '/' IN <fs>-UBRR_ANKETA_BKI_SENDDATE WITH '.'.
+      CALL FUNCTION 'CONVERT_DATE_TO_INTERNAL'
+        EXPORTING
+          date_external = <fs>-UBRR_ANKETA_BKI_SENDDATE
+        IMPORTING
+          date_internal = <fs>-UBRR_ANKETA_BKI_SENDDATE
+        EXCEPTIONS
+          DATE_EXTERNAL_IS_INVALID = 1
+          OTHERS                   = 2.
+      if sy-subrc ne 0.
+        CLEAR <fs>-UBRR_ANKETA_BKI_SENDDATE.
+      endif.
+
+      if zcl_jsp_connect=>con_name is initial.
+        ZCL_UTIL_DM_OLTP=>ZCONNECT_OLTP( exporting IV_CONNECT_OR_DISCONNECT = 'CONNECT'
+                                                   IV_CON_NAME              = 'UVKL'
+                                       ).
+      else.
+        zcl_jsp_connect=>connect( ).
+      endif.
+
+      TRY.
+      EXEC SQL.
+        EXECUTE PROCEDURE ubrr_scoring_crm.find_anketa(IN  :<fs>-ANKETA_FAM,
+                                                       IN  :<fs>-ANKETA_IM,
+                                                       IN  :<fs>-ANKETA_OT,
+                                                       IN  :lv_ANKETA_SERIESPASSPORT,
+                                                       IN  :lv_ANKETA_NUMBERPASSPORT,
+                                                       OUT :lv_anketa_id)
+      ENDEXEC.
+
+      EXEC SQL.
+        EXECUTE PROCEDURE
+          ubrr_scoring_crm.ubrr_add_update_anketa_sap(
+                   IN :lv_anketa_id,
+                   IN :<fs>-BP_ID,
+                   IN :lv_ubrr_anketa_creditsum ,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :<fs>-UBRR_ANKETA_SROK ,
+                   in :lv_appoint,
+                   IN :lv_null2,
+                   IN :<fs>-ANKETA_FAM ,
+                   IN :<fs>-ANKETA_IM ,
+                   IN :<fs>-ANKETA_OT ,
+                   IN :lv_UBRR_ANKETA_FIOCHANGE ,
+                   IN :lv_UBRR_ANKETA_OLDFIO ,
+                   IN :<fs>-ANKETA_BIRTH_DATE ,
+                   IN :<fs>-ANKETA_BIRTHPLACE ,
+                   IN :<fs>-ANKETA_SEX ,
+                   IN :lv_ANKETA_CITIZENSHIP ,
+                   IN :lv_null ,
+                   IN :lv_ANKETA_SERIESPASSPORT ,
+                   IN :lv_ANKETA_NUMBERPASSPORT ,
+                   IN :<fs>-ANKETA_WHOPASSPORT ,
+                   IN :<fs>-ANKETA_DATEPASSPORT ,
+                   IN :<fs>-ANKETA_REGION_REGISTR ,
+                   IN :<fs>-UBRR_ANKETA_REGINDEX ,
+                   IN :lv_null , * <fs>-UBRR_ANKETA_REGAREA ,
+                   IN :<fs>-UBRR_ANKETA_REGCITY ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_REGNPUNTK ,
+                   IN :<fs>-UBRR_ANKETA_REGSTREET ,
+                   IN :<fs>-UBRR_ANKETA_REGHOUSE ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_REGCORP ,
+                   IN :<fs>-UBRR_ANKETA_REGFLAT ,
+                   IN :<fs>-ANKETA_DATEREGISTR ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_EQUALREGFACT ,
+                   IN :<fs>-ANKETA_REGION_RESIDE ,
+                   IN :<fs>-UBRR_ANKETA_LIFEINDEX ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_LIFEAREA ,
+                   IN :<fs>-UBRR_ANKETA_LIFECITY ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_LIFENPUNTK ,
+                   IN :<fs>-UBRR_ANKETA_LIFESTREET ,
+                   IN :<fs>-UBRR_ANKETA_LIFEHOUSE ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_LIFECORP ,
+                   IN :<fs>-UBRR_ANKETA_LIFEFLAT ,
+                   IN :lv_null , * :<fs>-ANKETA_CHANGE ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_LIFEPLACE ,
+                   IN :lv_null , * :<fs>-HOLDERLIFEPLACE ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null , * :<fs>-ANKETA_SERIESOFFICER ,
+                   IN :lv_null , * :<fs>-ANKETA_NUMBEROFFICER ,
+                   IN :lv_null , * :<fs>-ANKETA_DATEOFFICER ,
+                   IN :lv_null , * :<fs>-ANKETA_WHOOFFICER ,
+                   IN :lv_null , * :<fs>-ANKETA_SERIESDRIVER ,
+                   IN :lv_null , * :<fs>-ANKETA_NUMBERDRIVER ,
+                   IN :lv_null , * :<fs>-ANKETA_DATEDRIVER ,
+                   IN :lv_null , * :<fs>-ANKETA_WHODRIVER ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :<fs>-ANKETA_MARRIAGE_STATE ,
+                   IN :lv_null , * :<fs>-ANKETA_YEAR_MARRIAGE ,
+                   IN :lv_null , * :<fs>-ANKETA_YEAR_WIFE ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_WIFEFIRSTNAME ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_WIFENAME ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_WIFELASTNAME ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_WIFEORG ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_WIFEORGPHONE ,
+                   IN :lv_null , * :<fs>-ANKETA_CHILDREN ,
+                   IN :lv_null , * :<fs>-ANKETA_YEAR_B1 ,
+                   IN :lv_null , * :<fs>-ANKETA_YEAR_B2 ,
+                   IN :lv_null , * :<fs>-ANKETA_YEAR_B3 ,
+                   IN :lv_null , * :<fs>-ANKETA_DEPENDANT ,
+                   IN :lv_null , * :<fs>-ANKETA_EDUCATION ,
+                   IN :lv_null ,
+                   IN :lv_null , * :ls_a-ANKETA_SURCE1 ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null , * :ls_a-ANKETA_SURCE4 ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null , * :<fs>-ANKETA_SURCE12 ,
+                   IN :lv_null , * :<fs>-ANKETA_AVTO ,
+                   IN :lv_null , * :<fs>-ANKETA_MARKAVTO ,
+                   IN :lv_null , * :<fs>-ANKETA_YEARAVTO ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_AVTOCOUNTRY ,
+                   IN :lv_null , * :<fs>-ANKETA_NUMBERAVTO ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_HOWBUYCAR ,
+                   IN :lv_null , * :<fs>-ANKETA_AVTO_PRICE ,
+                   IN :lv_null , * :lv_REALTY1_BUY ,
+                   IN :lv_null , * :lv_REALTY1_SQUARE ,
+                   IN :lv_null , * :lv_REALTY2_BUY ,
+                   IN :lv_null , * :lv_REALTY2_SQUARE ,
+                   IN :lv_null , * :lv_REALTY3_BUY ,
+                   IN :lv_null , * :lv_REALTY3_SQUARE ,
+                   IN :lv_null , * :lv_REALTY4_BUY ,
+                   IN :lv_null , * :lv_REALTY4_SQUARE ,
+                   IN :lv_null , * :lv_REALTY5_BUY ,
+                   IN :lv_null , * :lv_REALTY5_SQUARE ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null , * :ls_a-ANKETA_ELECTRON ,
+                   IN :lv_null , * :ls_a-ANKETA_CLASSIC ,
+                   IN :lv_null , * :ls_a-ANKETA_GOLD ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :<fs>-ANKETA_POST ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_SVID_NUMBER ,
+                   IN :<fs>-UBRR_ANKETA_POSTNAME ,
+                   IN :<fs>-ANKETA_NAMEORG ,
+                   IN :<fs>-ANKETA_REGION_ORG ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_ORGAREA ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_ORGCITY ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_ORGNPUNKT ,
+                   IN :<fs>-UBRR_ANKETA_ORGSTREET ,
+                   IN :<fs>-UBRR_ANKETA_ORGHOUSE ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_ORGCORP ,
+                   IN :<fs>-UBRR_ANKETA_ORGOFFICE ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_ORGINDEX ,
+                   IN :lv_null , * :<fs>-ANKETA_TELEFONORG ,
+                   IN :lv_null ,
+                   IN :lv_null , * :lv_ORG_CONTACTTEL ,
+                   IN :<fs>-UBRR_ANKETA_INN_ORG ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_BOSSFIO ,
+                   IN :<fs>-ANKETA_TIMEORG ,
+                   IN :lv_null , * :<fs>-ANKETA_TIMEACT ,
+                   IN :<fs>-ANKETA_BRANCH ,
+                   IN :<fs>-ANKETA_INCOME1 ,
+                   IN :lv_null , * :<fs>-ANKETA_INCOME2 ,
+                   IN :<fs>-ANKETA_INCOME3 ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_INCOME4 ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_INCOME5 ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_INCOME6 ,
+                   IN :lv_null , * :lv_MONTHEXPENCES1 ,
+                   IN :lv_null , * :lv_MONTHEXPENCES2 ,
+                   IN :lv_null ,
+                   IN :lv_null , * :lv_MONTHEXPENCES4 ,
+                   IN :lv_null , * :lv_MONTHEXPENCES5 ,
+                   IN :lv_null , * :lv_MONTHEXPENCES6 ,
+                   IN :lv_null , * :lv_MONTHEXPENCES7 ,
+                   IN :lv_null , * :lv_MONTHEXPENCES8 ,
+                   IN :lv_null , * :lv_MONTHEXPENCES9 ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null , * :lv_YEAR_EXPENCES4 ,
+                   IN :lv_null , * :lv_YEAR_EXPENCES5 ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_UNDERARREST ,
+                   IN :lv_null , * :lv_UNDERARREST_DESC ,
+                   IN :lv_null , * :lv_ALLCREDIT_OK ,
+                   IN :lv_null , * :lv_CREDITIDFIRST ,
+                   IN :lv_null , * :lv_BANKCREDITOR1 ,
+                   IN :lv_null , * :lv_CREDITDATE1 ,
+                   IN :lv_null , * :lv_CREDITSUM1 ,
+                   IN :lv_null , * :lv_MONTHPAYMENTS1 ,
+                   IN :lv_null , * :lv_CREDITRETURNDATE1 ,
+                   IN :lv_null , * :lv_CREDITNOTRETURNED1 ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null , * :lv_BFA_SROCHVKLAD ,
+                   IN :lv_null , * :lv_BFA_VKLADDOVOSTREB ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :<fs>-ANKETA_HOUSETEL ,
+                   IN :<fs>-ANKETA_WORKTEL ,
+                   IN :lv_null , * :<fs>-ANKETA_MOBILTEL ,
+                   IN :lv_null ,
+                   IN :<fs>-UBRR_ANKETA_EMAIL ,
+                   IN :<fs>-ubrr_anketa_psychostate ,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :<fs>-UBRR_ANKETA_TYPE,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_BKI_SEND ,
+                   IN :<fs>-UBRR_ANKETA_BKI_SENDDATE ,
+                   IN :lv_null ,
+                   IN :<fs>-UBRR_ANKETA_BKI_GET ,
+                   IN :<fs>-UBRR_ANKETA_BKI_GETDATE ,
+                   IN :lv_null ,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null , * :<fs>-ANKETA_RELATION_FAM1,
+                   IN :lv_null , * :<fs>-ANKETA_RELATION_IM1 ,
+                   IN :lv_null , * :<fs>-ANKETA_RELATION_OT1 ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :<fs>-ANKETA_RELATION_MOBILTEL1 ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null , * :<fs>-ANKETA_RELATION_FAM2 ,
+                   IN :lv_null , * :<fs>-ANKETA_RELATION_IM2 ,
+                   IN :lv_null , * :<fs>-ANKETA_RELATION_OT2 ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :<fs>-ANKETA_RELATION_MOBILTEL2 ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :<fs>-ANKETA_CHANGE_FLAG ,
+                   IN :lv_null , * :<fs>-ANKETA_CHANGE_FAM ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_DRIVER ,
+                   IN :lv_null , * :<fs>-ANKETA_OFFICER ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_REALTY ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_PCARD ,
+                   IN :lv_null , * :<fs>-UBRR_ANKETA_BFA ,
+                   IN :lv_null2,
+                   IN :<fs>-ANKETA_CESSION_ASSIGN,
+                   out :lv_new_anketa_id,
+                   out :lv_prc_ret_errcode,
+                   out :lv_prc_ret_value,
+                   out :lv_prc_ret_message,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   IN :lv_null2,
+                   in :lv_null , * :<fs>-ubrr_delivery_region,
+                   in :lv_null , * :<fs>-ubrr_delivery_city,
+                   in :lv_null , * :<fs>-ubrr_delivery_street,
+                   in :lv_null , * :<fs>-ubrr_delivery_house,
+                   in :lv_null , * :<fs>-ubrr_delivery_bilding,
+                   in :lv_null , * :<fs>-ubrr_delivery_flat,
+                   in :lv_null , * :<fs>-ubrr_delivery_notes,
+                   in :lv_null , * :<fs>-CCLAIM_CRM_PROD
+
+                  )
+        ENDEXEC.
+      CATCH cx_sy_native_sql_error  INTO lr_expt_nsql.
+        lv_prc_ret_message = lr_expt_nsql->sqlmsg.
+        lv_prc_ret_value   = '1'.
+      ENDTRY.
+*      EXEC SQL.
+*        EXECUTE PROCEDURE ubrr_crm.ubrr_add_update_anketa_sap(
+*          in :<fs_tab_exl>-anketa_id,
+*          in :<fs_tab_exl>-BP_ID,
+*          in :lv_ubrr_anketa_creditsum
+*        )
+*      ENDEXEC.
+
+      EXEC SQL.
+        SET CONNECTION DEFAULT
+      ENDEXEC.
+
+      if lv_prc_ret_value ne '0'.
+        GS_ANKETA-ANKETA_ID = lv_anketa_id.
+        CONCATENATE 'ERROR: ' lv_prc_ret_message ':' lv_prc_ret_value ':' lv_prc_ret_errcode INTO GS_ANKETA-STATUS.
+      else.
+        if lv_anketa_id is not initial.
+          GS_ANKETA-ANKETA_ID = lv_anketa_id.
+          GS_ANKETA-STATUS    = 'OK (Изменено)'.
+        else.
+          GS_ANKETA-ANKETA_ID = lv_new_anketa_id.
+          GS_ANKETA-STATUS    = 'OK (Создано)'.
+        endif.
+      endif.
+      GS_ANKETA-FAM      = <fs>-ANKETA_FAM.
+      GS_ANKETA-IM       = <fs>-ANKETA_IM.
+      GS_ANKETA-OT       = <fs>-ANKETA_OT.
+      GS_ANKETA-ROWINDEX = lv_curr_row_idx.
+      append gs_anketa to gt_anketa.
+      lv_curr_row_idx = lv_curr_row_idx + 1.
+    ENDLOOP.
+*    FREE lv_check.
+  ENDLOOP.
+
+ENDFORM.
+
+*&---------------------------------------------------------------------*
+*&      Form  in_excel
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+FORM
+  in_excel.
+  TYPES:
+  BEGIN OF lty_exel,
+        idclient_ubrr     TYPE string,  "
+        idclient_vuzb     TYPE string,  "
+        name_last         TYPE string,  "Фамилия
+        name_first        TYPE string,  "Имя
+        namemiddle        TYPE string,  "Отчество
+        sex               TYPE string,  "Пол
+        birthday          TYPE string,  "День рождения
+        ser               TYPE string,  "Серия паспорта
+        no                TYPE string,  "Номер паспорта
+        givendate         TYPE string,  "Дата выдачи паспорта РФ
+        givenplace        TYPE string,  "Орган, выдавший паспорт
+        department        TYPE string,  "Код подразделения из паспорта РФ
+        resident          TYPE string,  "Рез/нерезидент
+        birthplace        TYPE string,  "Место рождения
+        family            TYPE string,  "
+        what              TYPE string,  "Вопрос
+        value             TYPE string,  "Ответ
+        address           TYPE string,  "Город
+        ziplive           TYPE string,  "Почтовый индекс проживания
+        countrylive       TYPE string,  "Страна проживания
+        regionlive        TYPE string,  "Регион проживания
+        citylive          TYPE string,  "Город проживания
+        streetlive        TYPE string,  "Улица проживания
+        houselive         TYPE string,  "Дом проживания
+        buildinglive      TYPE string,  "Строение проживание
+        framelive         TYPE string,  "
+        flatlive          TYPE string,  "Квартира проживания
+        countryres        TYPE string,  "Страна регистрации
+        addressreg        TYPE string,  "Город регистрации
+        zipreg            TYPE string,  "Почтовый индекс регистрации
+        countryreg        TYPE string,  "Страна регистрации
+        regionreg         TYPE string,  "Регион регистрации
+        cityreg           TYPE string,  "Город регистрации
+        streetreg         TYPE string,  "Улица регистрации
+        housereg          TYPE string,  "Дом регистрации
+        buildingreg       TYPE string,  "Строение регистрации
+        framereg          TYPE string,  "
+        flatreg           TYPE string,  "Квартира регистрации
+        mobile            TYPE string,  "Телефона
+        mail              TYPE string,  "Почта
+        ipdl              TYPE string,  "ИПДЛ (Иностранное публичное должностное лицо)
+        rpdl              TYPE string,  "РПДЛ
+        dlpmo             TYPE string,  "ДЛПМО
+        fatca             TYPE string,  "FATCA-статус
+        crs_status        TYPE string,  "CRS-статус
+        birthcountry      TYPE string,  "страна рождения
+    END OF lty_exel.
+
+  DATA: lt_tab_exl        TYPE STANDARD TABLE OF lty_exel
+      , ls_tab_exl        TYPE                   lty_exel
+      , gv_filter         TYPE                   string "строка для фильтрации выбираемых файлов
+      , lv_fd_name        TYPE string
+      , lv_path_dop       TYPE string   "Выбор пути к папке для сохранения отчёта
+      , lv_path_name      TYPE string   "переменна я для работы с именами файлов/папок
+      , lv_filename       TYPE string
+      , lv_filepath       TYPE string
+      , lv_path           TYPE string   " имя файла при выгрузке в ексель
+      , lv_rov            TYPE i
+      , lv_col            TYPE i
+      , lv_rc             TYPE i
+      , lv_diap           TYPE string
+      , lv_num_str        TYPE i
+      , lv_buf(30)        TYPE c
+      , lv_count          TYPE i
+      , lt_filetable      TYPE filetable " таблица для получения списка путей и имён файлов
+      , ls_file_table     TYPE file_table" структура для таблицы lt_filetable  для работы с путём и именами выделеных файлов
+      , ls_zbcm_stphone   TYPE zbcm_stphone
+      , ls_phone_stat     TYPE zbcm_phone_stat
+
+*     ole2 объекты
+      , application       TYPE ole2_object
+      , workbook          TYPE ole2_object
+      , workbooks         TYPE ole2_object
+      , worksheets        TYPE ole2_object
+      , worksheet         TYPE ole2_object
+      , speccell          TYPE ole2_object
+      , column            TYPE ole2_object
+      , cell              TYPE ole2_object
+      , range             TYPE ole2_object
+      , borders           TYPE ole2_object
+      , lr_oref           TYPE REF TO cx_root
+      , ls_text           TYPE string
+      , lv_check          TYPE string
+      .
+
+  DATA: is_bp_full        TYPE zbpdt_create_bp_full
+      , es_resp           TYPE zbpdt_resp_bp_full
+      , lv_1              TYPE string
+      , lv_2              TYPE string
+      , lv_3              TYPE string
+      , lv_len            TYPE i
+      , lv_result         TYPE string
+      , lv_bp             TYPE bu_partner
+      , lv_mail           TYPE ad_smtpadr
+      , lv_val            TYPE i VALUE 2
+      , lv_val2           TYPE string
+      , lv_val3           TYPE string
+      , lv_type_1         TYPE dd01v-datatype
+      , lv_type_2         TYPE dd01v-datatype
+      , lv_city           TYPE string
+      , lv_street         TYPE string
+      , lt_tmp_tab        TYPE STANDARD TABLE OF string
+      , lv_tmp_1          TYPE string
+      , lv_tmp_2          TYPE string
+      , lv_tmp_3          TYPE string
+      , len               TYPE i
+      , lv_len_str        TYPE i
+      , lv_str            TYPE string
+      , lv_bp_save        TYPE boolean
+      , ls_address_change TYPE zstr_kma_address_change
+      , lv_fio_rus        TYPE char40
+      , lv_fio_eng        TYPE char40
+      , gs_zaddr_fias     TYPE zaddr_fias
+      , ls_addr           TYPE zstr_zaa_addr_sh
+      , lr_check          TYPE REF TO zl_crm_bp_uiu_save_check
+      , lt_systype        TYPE zbpstring_tab
+      , ls_systype        TYPE string
+      , lt_zbut001        TYPE TABLE OF zbut0000000001
+      , lt_repl_act       TYPE TABLE OF zbut0000000001
+      , ls_zbut001        TYPE zbut0000000001
+      , lt_return         TYPE TABLE OF bapiret2
+      , ls_return         TYPE bapiret2
+      , lv_check_repl     TYPE boolean
+      , ls_repl_act       TYPE zbut0000000001
+      , lv_crs_status     TYPE zed_crs
+      , lv_prc_ret_errcode       TYPE text1024
+      , lv_prc_ret_value         TYPE text1024
+      , lv_prc_ret_message       TYPE text1024
+      , lr_expt_nsql             TYPE REF TO cx_sy_native_sql_error
+      .
+  DATA: ls_zbut000_ext TYPE zbut000_ext.
+  FIELD-SYMBOLS: <fs_tab_exl>  TYPE lty_exel
+               .
+
+  CALL METHOD cl_gui_frontend_services=>file_open_dialog "выводим окно диалога выбора файлов
+    EXPORTING window_title      = 'Выберите файлы для загрузки'"заголовок окна
+              file_filter       = gv_filter   " выбираемый фильтр
+              initial_directory =  'C:\'      " начальная директория
+*              multiselection    = 'Х'         " разрешения на выбор нескольких файлов
+    CHANGING  file_table        = lt_filetable   " таблица содержащая пути и и мена файлов
+              rc                = lv_rc      " значение ошибки
+    EXCEPTIONS
+    OTHERS            = 1.
+
+  LOOP AT lt_filetable INTO ls_file_table .
+    "создаём OLE объёкты открываем файл
+    CREATE OBJECT application 'excel.application'. "создаём экземпляр апликации
+    SET PROPERTY OF application 'Visible'     = 0." скрываем от пользователя (изменить на 0 для сокрытия)
+    GET PROPERTY OF application 'Workbooks'   = workbooks. " создаём библиотеку документов ексель
+    CALL METHOD OF workbooks 'Open' = workbook
+      EXPORTING
+      #1 = ls_file_table. "открываем один документ с путём из текущей строки таблицы filetable
+
+    SET PROPERTY OF application 'DecimalSeparator' = '.'. " установка десятичного разделителя
+    SET PROPERTY OF application 'UseSystemSeparators' = 'false' .
+    GET PROPERTY OF workbook    'Worksheets'  = worksheets. "Создаём библиотеку вкладок
+    CALL METHOD OF worksheets 'Select'
+      EXPORTING
+      #1 = 1."выбираем вкладка(лист) с опред номером( первую) переходит в АКТИВ воркшеет
+
+    GET PROPERTY OF workbook    'ActiveSheet' = worksheet. "выбираем активную вкладку
+    GET PROPERTY OF worksheet   'Cells'       = cell     exporting  #1 = 1 #2 = 1."Устанавливаем значения активной ячейки
+    CALL METHOD OF cell 'Text' = lv_buf . "считываем значения из ячейки в буфер
+    GET PROPERTY OF worksheet   'ROWS'        = borders  exporting  #1 = 1.
+    CALL METHOD OF borders 'DELETE'."Вставка в верху одной строки для "шапки" таблицы
+
+    CALL FUNCTION 'SO_SPLIT_FILE_AND_PATH'
+      EXPORTING
+        full_name     = ls_file_table
+      IMPORTING
+        stripped_name = lv_filename
+        file_path     = lv_filepath.
+
+    TRANSLATE lv_filename USING '._'.
+    CONCATENATE lv_filepath lv_filename '_copy.TXT'
+    INTO lv_path .
+
+    SET PROPERTY OF application 'DisplayAlerts' = 0.
+    CALL METHOD OF workbook 'SaveAS'
+      EXPORTING
+      #1 = lv_path
+      #2 = -4158.                       " параметр для сохранения как txt c разделителем "-4143." параметр для сохранения в стандартный ексель
+    CALL METHOD OF application 'QUIT' . " выходим из апликации
+    FREE OBJECT     application.        "закрываем объект апликации с удалением связи
+
+    cl_gui_frontend_services=>gui_upload(
+      EXPORTING
+         filename = lv_path
+         filetype = 'ASC'
+         has_field_separator = '#'
+        " dat_mode = 'X'
+      CHANGING
+        data_tab = lt_tab_exl
+      EXCEPTIONS
+      OTHERS = 99 ).
+    if sy-subrc ne 0.
+      clear lt_tab_exl.
+      data: lv_excel_filename type RLGRAP-FILENAME,
+            lv_curr_tab_idx   type sytabix,
+            lv_curr_row_idx   type sytabix,
+            lt_excel_data     type standard table of ZALSMEX_TABLINE,
+            lr_data_descr     type ref to cl_abap_structdescr,
+            lv_stop           type xfeld,
+            ls_data           type lty_exel.
+      FIELD-SYMBOLS:
+            <ls_component>    LIKE LINE OF cl_abap_structdescr=>components,
+            <lv_value>        TYPE ANY,
+            <fs_data>         TYPE ZALSMEX_TABLINE.
+      MOVE ls_file_table to lv_excel_filename.
+      CALL FUNCTION 'ALSM_EXCEL_TO_INTERNAL_TABLE'
+        EXPORTING FILENAME    = lv_excel_filename
+                  I_BEGIN_COL = 1
+                  I_BEGIN_ROW = 2
+                  I_END_COL   = 100
+                  I_END_ROW   = 10000
+        TABLES    INTERN      = lt_excel_data
+        EXCEPTIONS OTHERS = 99.
+      if sy-subrc eq 0.
+        lr_data_descr ?= cl_abap_typedescr=>describe_by_data( ls_data ).
+        lv_curr_row_idx = 1.
+        DO.
+          lv_stop = 'X'.
+          clear ls_data.
+          LOOP AT lr_data_descr->components ASSIGNING <ls_component>.
+            lv_curr_tab_idx = sy-tabix.
+            READ TABLE lt_excel_data assigning <fs_data> WITH KEY COL = lv_curr_tab_idx ROW = lv_curr_row_idx.
+            if sy-subrc eq 0.
+              ASSIGN COMPONENT <ls_component>-name OF STRUCTURE ls_data TO <lv_value>.
+              <lv_value> = <fs_data>-value.
+              clear lv_stop.
+            endif.
+          ENDLOOP.
+          if lv_stop eq 'X'.
+            EXIT.
+          else.
+            append ls_data TO lt_tab_exl.
+            lv_curr_row_idx = lv_curr_row_idx + 1.
+          endif.
+        ENDDO.
+      endif.
+    endif.
+
+    CALL METHOD cl_gui_frontend_services=>file_delete
+      EXPORTING
+        filename             = lv_path
+      CHANGING
+        rc                   = lv_rc
+      EXCEPTIONS
+        file_delete_failed   = 1
+        cntl_error           = 2
+        error_no_gui         = 3
+        file_not_found       = 4
+        access_denied        = 5
+        unknown_error        = 6
+        not_supported_by_gui = 7
+        wrong_parameter      = 8.
+
+    FREE lv_check.
+
+    LOOP AT lt_tab_exl ASSIGNING <fs_tab_exl> WHERE sex IS NOT INITIAL.
+      IF <fs_tab_exl> IS INITIAL.
+        EXIT.
+      ENDIF.
+      lv_tmp_1  = <fs_tab_exl>-birthday.
+      lv_tmp_2  = <fs_tab_exl>-givendate.
+
+      CLEAR lv_prc_ret_value.
+      REPLACE ALL OCCURRENCES OF REGEX '/' IN lv_tmp_1 WITH '.'.
+      REPLACE ALL OCCURRENCES OF REGEX '/' IN lv_tmp_2 WITH '.'.
+      TRY.
+        EXEC SQL.
+          SELECT TO_CHAR(TO_DATE(:lv_tmp_1, 'dd.mm.yyyy'), 'MMDDYYYY')
+            INTO :lv_tmp_1
+            FROM DUAL
+        ENDEXEC.
+        EXEC SQL.
+          SELECT TO_CHAR(TO_DATE(:lv_tmp_2, 'dd.mm.yyyy'), 'MMDDYYYY')
+            INTO :lv_tmp_2
+            FROM DUAL
+        ENDEXEC.
+        CONCATENATE lv_tmp_1+0(2)'/'lv_tmp_1+2(2)'/'lv_tmp_1+4(4) into <fs_tab_exl>-birthday.
+        CONCATENATE lv_tmp_2+0(2)'/'lv_tmp_2+2(2)'/'lv_tmp_2+4(4) into <fs_tab_exl>-givendate.
+      CATCH cx_sy_native_sql_error  INTO lr_expt_nsql.
+        lv_prc_ret_message = lr_expt_nsql->sqlmsg.
+        lv_prc_ret_value   = '1'.
+        lv_tmp_1  = <fs_tab_exl>-birthday.
+        lv_tmp_2  = <fs_tab_exl>-givendate.
+        REPLACE ALL OCCURRENCES OF REGEX '/' IN lv_tmp_1 WITH space.
+        REPLACE ALL OCCURRENCES OF REGEX '/' IN lv_tmp_2 WITH space.
+      ENDTRY.
+
+      CALL FUNCTION 'NUMERIC_CHECK'
+        EXPORTING
+          string_in = lv_tmp_1
+        IMPORTING
+          htype     = lv_type_1.
+
+      CALL FUNCTION 'NUMERIC_CHECK'
+        EXPORTING
+          string_in = lv_tmp_2
+        IMPORTING
+          htype     = lv_type_2.
+
+      IF lv_type_1 EQ 'NUMC' AND lv_type_2 EQ 'NUMC'.
+        lv_bp_save = 'X'.
+      ELSE.
+        CLEAR lv_bp_save.
+      ENDIF.
+
+*---*is_bp_full-CONTROLLER          =                    "Control Flags for Fields of a Structure
+      is_bp_full-augrp        = gv_augrp.                "Банк
+      is_bp_full-name_last    = <fs_tab_exl>-name_last.  "Фамилия
+      is_bp_full-name_first   = <fs_tab_exl>-name_first. "Имя
+      is_bp_full-namemiddle   = <fs_tab_exl>-namemiddle. "Отчество
+
+      SPLIT <fs_tab_exl>-birthday AT '/' INTO lv_1 lv_2 lv_3."MM DD YYYY
+
+      lv_len = STRLEN( lv_1 ).
+
+      IF lv_len <= 1.
+        CONCATENATE '0' lv_1 INTO lv_1.
+      ENDIF.
+
+      lv_len = STRLEN( lv_2 ).
+
+      IF lv_len <= 1.
+        CONCATENATE '0' lv_2 INTO lv_2.
+      ENDIF.
+
+*      IF lv_2 > 12.
+*        CONCATENATE lv_3 lv_1 lv_2 INTO is_bp_full-birthdt.
+*      ELSE.
+*        CONCATENATE lv_3 lv_1 lv_2 INTO is_bp_full-birthdt.
+*      ENDIF.
+
+      CONCATENATE lv_3 lv_1 lv_2 INTO is_bp_full-birthdt.
+
+*      is_bp_full-birthdt       = <fs_tab_exl>-birthday.    "Дата ----------------DATS
+      is_bp_full-birthpl      = <fs_tab_exl>-birthplace.    "Место рождения
+      is_bp_full-tel_number   = <fs_tab_exl>-mobile.        "Номер телефона
+*      is_bp_full-WORK_NUMBER  = .                          "Рабочий номер телефона
+      is_bp_full-smtp_addr     = <fs_tab_exl>-mail.         "E-mail
+      is_bp_full-natio         = 'RU'.                      "Гражданство
+
+      CLEAR lv_fio_rus.
+      CLEAR lv_fio_eng.
+
+      CONCATENATE is_bp_full-name_last  ' '
+                  is_bp_full-name_first ' '
+                  is_bp_full-namemiddle
+             INTO lv_fio_rus respecting blanks.
+
+      "Наименование на иностранном языке
+      CALL FUNCTION 'ZFM_SUD_EEV_TRANSLIT_RU_TO_EN'
+        EXPORTING
+          iv_ru = lv_fio_rus
+        IMPORTING
+          ev_en = lv_fio_eng.
+
+      REPLACE '$' WITH 'S' INTO lv_fio_eng.
+*      CONDENSE lv_fio_eng NO-GAPS.
+      TRANSLATE lv_fio_eng TO UPPER CASE.
+      is_bp_full-zzafld000000 = lv_fio_eng.
+
+
+      is_bp_full-zzafld000002 = 'Р'."<fs_tab_exl>-resident. "Резидент
+      is_bp_full-zzafld000012 = <fs_tab_exl>-ser.           "Серия Паспорта
+* Расшифровка для поля ИПДЛ
+* 0	Не определено
+* 1	Является
+* 2	Является родственником
+* 4	Связь с ИПДЛ
+* 3	Не является
+      if <fs_tab_exl>-ipdl is initial.
+        <fs_tab_exl>-ipdl = '3'.
+      endif.
+      is_bp_full-wipdl-ipdl   = <fs_tab_exl>-ipdl.          "ИПДЛ
+* Расшифровка для поля РПДЛ
+* 0	Не определено
+* 1	Является
+* 3	Является родственником
+* 4	Связь с РПДЛ
+* 2	Не является
+      if <fs_tab_exl>-rpdl is initial.
+        <fs_tab_exl>-rpdl = '2'.
+      endif.
+* Заполнение поле РПДЛ
+      is_bp_full-wipdl-pdl    = <fs_tab_exl>-rpdl.          "РПДЛ
+* Заполнение поля CRS-статус
+      if <fs_tab_exl>-crs_status is initial.
+        lv_crs_status           = '10'.
+      else.
+        lv_crs_status           = <fs_tab_exl>-crs_status.
+      endif.
+* Заполнение поля Номер Паспорта
+      is_bp_full-idnumber     = <fs_tab_exl>-no.            "Номер Паспорта
+
+      SPLIT <fs_tab_exl>-givendate AT '/' INTO lv_1 lv_2 lv_3.
+
+      lv_len = STRLEN( lv_1 ).
+      IF lv_len <= 1.
+        CONCATENATE '0' lv_1 INTO lv_1.
+      ENDIF.
+
+      lv_len = STRLEN( lv_2 ).
+
+      IF lv_len <= 1.
+        CONCATENATE '0' lv_2 INTO lv_2.
+      ENDIF.
+
+      IF lv_2 > 12.
+        CONCATENATE lv_3 lv_1 lv_2 INTO is_bp_full-entry_date.
+      ELSE.
+        CONCATENATE lv_3 lv_2 lv_1 INTO is_bp_full-entry_date.
+      ENDIF.
+
+*      is_bp_full-entry_date   = <fs_tab_exl>-givendate.  "Дата ----------------DATS
+
+      is_bp_full-institute     = <fs_tab_exl>-givenplace. "Паспорт Выдан
+      is_bp_full-zzafld000013 = <fs_tab_exl>-department.  "Код подразделения
+      is_bp_full-xsex         = <fs_tab_exl>-sex. "Пол
+
+      TRANSLATE is_bp_full-xsex TO UPPER CASE.
+
+      IF is_bp_full-xsex = 'М'.
+        is_bp_full-xsex = '2'.
+      ELSE.
+        is_bp_full-xsex = '1'.
+      ENDIF.
+*      is_bp_full-NAME_LST2     = . "Девичья фамилия
+*      is_bp_full-MARST         = . "Семейное положение
+
+*----------------------------------------------------
+*--------------Адресс--регистарции-------------------
+*----------------------------------------------------
+      " Разделяем строку адреса на отдельные строки
+      CALL FUNCTION 'ZFM_KMA_CHANGE_ADDRESS'
+        EXPORTING
+          iv_address        = <fs_tab_exl>-addressreg
+          iv_region         = <fs_tab_exl>-regionreg
+          iv_post_code      = <fs_tab_exl>-zipreg
+        IMPORTING
+          es_address_change = ls_address_change.
+
+
+      is_bp_full-addr_r-regiogroup     = ''. "Район рег.
+
+      IF ls_address_change-fias_status = abap_true.
+        gs_partner-fias_reg = 'Да'."Адрес соответствует ФИАС
+      ELSE.
+        gs_partner-fias_reg = 'Нет'."Адрес не соответствует ФИАС
+      ENDIF.
+
+      is_bp_full-addr_r-post_code1 = <fs_tab_exl>-zipreg.    "Индекс
+      is_bp_full-addr_r-region     = <fs_tab_exl>-regionreg. "Регион
+      is_bp_full-addr_r-regiogroup         =    ls_address_change-regiogroup. "Район
+*      is_bp_full-addr_r-city2             =                          .       "Населенный пункт
+      is_bp_full-addr_r-city1              =    ls_address_change-city.       "Город
+      is_bp_full-addr_r-street             =    ls_address_change-street.     "Улица
+      is_bp_full-addr_r-house_num1         =    ls_address_change-number_1.   "Дом
+      is_bp_full-addr_r-roomnumber         =    ls_address_change-number_2.   "Квартира
+      is_bp_full-addr_r-house_num2         =    ls_address_change-number_3.   "Корпус
+
+*----------------------------------------------------
+*--------------Адресс--проживания-------------------
+*----------------------------------------------------
+      " Разделяем строку адреса на отдельные строки
+      CALL FUNCTION 'ZFM_KMA_CHANGE_ADDRESS'
+        EXPORTING
+          iv_address        = <fs_tab_exl>-address
+          iv_region         = <fs_tab_exl>-regionlive
+          iv_post_code      = <fs_tab_exl>-ziplive
+        IMPORTING
+          es_address_change = ls_address_change.
+
+      is_bp_full-addr_pr-regiogroup    =  ''. "Район прож.
+
+      IF ls_address_change-fias_status = abap_true.
+        gs_partner-fias_live = 'Да'."Адрес соответствует ФИАС
+      ELSE.
+        gs_partner-fias_live = 'Нет'."Адрес не соответствует ФИАС
+      ENDIF.
+
+      is_bp_full-addr_pr-post_code1    = <fs_tab_exl>-ziplive.         "Индекс
+      is_bp_full-addr_pr-region        = <fs_tab_exl>-regionlive.      "Регион
+      is_bp_full-addr_pr-regiogroup    = ls_address_change-regiogroup. "Район
+      is_bp_full-addr_pr-city1         = ls_address_change-city.       "Город
+      is_bp_full-addr_pr-street        = ls_address_change-street.     "Улица
+      is_bp_full-addr_pr-house_num1    = ls_address_change-number_1.   "Дом
+      is_bp_full-addr_pr-house_num2    = ls_address_change-number_3.   "Корпус
+      is_bp_full-addr_pr-roomnumber    = ls_address_change-number_2.   "Квартира
+      is_bp_full-addr_r_pr             = ls_address_change-address.    "Адрес
+
+
+*      Репликация
+      IF gv_repl IS NOT INITIAL.
+        APPEND gv_repl TO is_bp_full-woltprepl-systype.
+      ENDIF.
+*      is_bp_full-woltprepl-systype =.
+*---*is_bp_full-ESIA         = .
+
+      IF is_bp_full IS INITIAL.
+        EXIT.
+      ENDIF.
+
+      "Сохранение
+      IF lv_bp_save = 'X'.
+        CALL FUNCTION 'ZFM_SSV_BP_CREATE'
+          EXPORTING
+            is_bp_full    = is_bp_full
+            iv_crs_status = lv_crs_status
+          IMPORTING
+            es_resp    = es_resp.
+      ENDIF.
+
+      "Проверка, реплицирован ли текущий ДП
+      SELECT *
+        INTO TABLE lt_repl_act
+        FROM zbut0000000001
+       WHERE partner = es_resp-bu_partner
+         AND zzniuoltpa = 'TWR'.
+
+      "Репликация
+      IF gv_repl IS NOT INITIAL ."AND es_resp-status <> 'CR'.
+
+        lt_systype = is_bp_full-woltprepl-systype.
+
+        CREATE OBJECT lr_check.
+
+        lr_check->gv_from_fm = 'X'.
+        lr_check->gv_partner = es_resp-bu_partner.
+
+        LOOP AT lt_systype INTO ls_systype.
+
+          DELETE FROM zbut0000000001_t
+                WHERE partner = es_resp-bu_partner.
+
+          SELECT *
+            INTO TABLE lt_zbut001
+            FROM zbut0000000001
+           WHERE partner = es_resp-bu_partner.
+
+          "Смотрим какой банк
+          IF gv_augrp  = 'UBRR'.
+            IF <fs_tab_exl>-idclient_ubrr <> '-'.
+              ls_zbut001-zzuoa        = <fs_tab_exl>-idclient_ubrr.
+            ENDIF.
+          ELSE.
+            IF <fs_tab_exl>-idclient_vuzb <> '-'.
+              ls_zbut001-zzuoa        = <fs_tab_exl>-idclient_vuzb.
+            ENDIF.
+          ENDIF.
+
+          ls_zbut001-client       = '300'.
+          ls_zbut001-partner      = es_resp-bu_partner.
+          ls_zbut001-zzniuoltpa   = ls_systype.
+          ls_zbut001-zzouiuoltpao = ls_systype.
+          ls_zbut001-zzaouuaaui   = abap_true.
+
+          APPEND ls_zbut001
+              TO lt_zbut001.
+
+          TRY.
+              INSERT zbut0000000001_t
+                FROM TABLE lt_zbut001.
+
+            CATCH cx_sy_open_sql_db.
+              MODIFY zbut0000000001_t
+                FROM TABLE lt_zbut001.
+          ENDTRY.
+
+          COMMIT WORK AND WAIT.
+
+          lr_check->save_oltp_fm( CHANGING ct_return = lt_return ).
+        ENDLOOP.
+
+*        READ TABLE lt_return INDEX 1 INTO ls_return.
+*        gs_partner-repl = ls_return-message_v1.
+
+      ENDIF.
+
+      IF es_resp-bu_partner IS NOT INITIAL.
+        gs_partner-partner = es_resp-bu_partner.
+
+        lv_bp   = es_resp-bu_partner.
+        lv_mail = is_bp_full-smtp_addr.
+
+        CALL FUNCTION 'ZFM_KMA_EMAIL_CLEAR_PARAM'.
+
+        CALL FUNCTION 'ZFM_YMV_EMAIL_CHECK'
+          EXPORTING
+            iv_partner    = lv_bp
+            iv_curr_email = lv_mail
+            iv_auth_group = ''
+          IMPORTING
+            ev_result     = lv_result.
+
+        IF es_resp-status = 'CR'.
+          gs_partner-partner = es_resp-bu_partner.
+          gs_partner-status = 'Создан'.
+* Заполнение доп полей
+          select single *
+            into ls_zbut000_ext
+            from zbut000_ext
+           where partner = es_resp-bu_partner.
+* Заполняем
+          if sy-subrc eq 0.
+*            ls_zbut000_ext-zpdl   = <fs_tab_exl>-rpdl.
+* Заполнение поля ДЛПМО
+* 0	Не определено
+* 1	Является
+* 3	Является родственником
+* 4	Связь с ДЛПМО
+* 2	Не является
+            if <fs_tab_exl>-dlpmo is initial.
+              <fs_tab_exl>-dlpmo = '2'.
+            endif.
+            ls_zbut000_ext-zdlpmo = <fs_tab_exl>-dlpmo.
+* Заполнение поля FATCA-статус
+* Не определен
+* 10  Резидент США
+* 20  Нерезидент США
+* 30  Отказ клиента
+* 40  Осуществлен запрос документов
+* 50  Документы предоставлены. Нерезидент США
+* 60  Документы предоставлены. Резидент США
+            if <fs_tab_exl>-fatca is initial.
+              <fs_tab_exl>-fatca = '20'.
+            endif.
+            ls_zbut000_ext-fatca_status = <fs_tab_exl>-fatca.
+            ls_zbut000_ext-fatca_print  = 'X'.
+* Заполнение поля "страна рождения"
+            select single land1
+              into ls_zbut000_ext-zbirthcountry
+              from t005
+             where land1 = <fs_tab_exl>-birthcountry.
+            if sy-subrc ne 0.
+              ls_zbut000_ext-zbirthcountry = 'RU'.
+            endif.
+            modify zbut000_ext from ls_zbut000_ext.
+            commit work and wait.
+          endif.
+*
+        ELSE.
+          gs_partner-partner = es_resp-bu_partner.
+          gs_partner-status = 'Найден'.
+        ENDIF.
+
+        IF gv_repl IS NOT INITIAL."Репликация проведена
+
+          IF lt_repl_act IS NOT INITIAL AND es_resp-status <> 'CR'."ДП уже был реплицирован
+            gs_partner-repl = 'Повторно реплицирован'.
+          ELSE.
+            gs_partner-repl = 'Реплицирован'.
+          ENDIF.
+
+        ELSE."Репликация не проводилась
+
+          IF lt_repl_act IS NOT INITIAL."ДП уже был реплицирован
+            gs_partner-repl = 'Ранее реплицирован'.
+          ELSE.
+            gs_partner-repl = 'Не реплицирован'.
+          ENDIF.
+
+        ENDIF.
+
+        APPEND gs_partner  TO gt_partner.
+
+      ELSE. "Если Дп не создалось
+
+        gs_partner-partner = 'ОШИБКА'.
+
+        lv_str = lv_val.
+
+        CONCATENATE 'Строка в Excel: ' lv_str INTO gs_partner-status.
+        APPEND gs_partner  TO gt_partner.
+      ENDIF.
+
+      CLEAR: is_bp_full
+           , gs_partner
+           , es_resp
+           , lt_repl_act
+           , lt_return
+           .
+
+      ADD 1 TO lv_val.
+    ENDLOOP.
+********************************************
+
+    IF lv_check IS NOT INITIAL.
+*      gv_refresh = ''.
+
+      "Собираем необходимые данные для модуля проверки
+*      CALL FUNCTION 'ZFG_KMA_STAT_CHECK'
+*        EXPORTING
+*          it_exel_tab = gt_grid
+*        IMPORTING
+*          et_grid     = gt_grid
+*          es_error    = gs_check-error.
+
+*      gt_error = gs_check-error.
+
+*      CALL METHOD gr_cl_grid->refresh_table_display
+*        EXPORTING
+*          is_stable = gs_stable.
+      CALL METHOD cl_gui_cfw=>flush.
+    ELSE.
+*      MESSAGE i015(zcl_msg_kma_prod) WITH gv_name.
+      EXIT.
+    ENDIF.
+  ENDLOOP.
+ENDFORM.                    "in_excel
+*&---------------------------------------------------------------------*
+*&      Module  START  OUTPUT
+*&---------------------------------------------------------------------*
+*       text
+*----------------------------------------------------------------------*
+MODULE start OUTPUT.
+
+*  Table
+  DATA: lt_exclude      TYPE         ui_functions
+      , lt_field        TYPE         lvc_t_fcat
+      , lt_fieldcat     TYPE         lvc_t_fcat
+      .
+
+*  Structure
+  DATA: ls_layout       TYPE         lvc_s_layo
+      , ls_dropdown     TYPE         lvc_s_drop
+      , ls_fieldcat     LIKE LINE OF lt_fieldcat
+      .
+
+  CLEAR:
+*         gr_cl_grid
+*       , gr_cl_cont
+*       ,
+         gr_cl_edit_cont
+       , gr_cl_edit
+       , lt_exclude
+       , lt_field
+       , lt_fieldcat
+       , ls_layout
+       , ls_dropdown
+       , ls_fieldcat
+       .
+  if gr_cl_cont is initial.
+    CREATE OBJECT gr_cl_cont
+      EXPORTING
+        container_name = 'CONTENT'
+      EXCEPTIONS
+        OTHERS         = 1.
+  endif.
+
+  if gr_cl_grid is initial.
+    CREATE OBJECT gr_cl_grid
+      EXPORTING
+        i_parent = gr_cl_cont
+      EXCEPTIONS
+        OTHERS   = 1.
+  endif.
+
+  DEFINE _append_exclude_.
+    append &1 to lt_exclude.
+  END-OF-DEFINITION.
+
+*   Приводим поля в нужный нам вид
+  CALL FUNCTION 'LVC_FIELDCATALOG_MERGE'
+    EXPORTING
+      i_structure_name = gv_struct_name
+    CHANGING
+      ct_fieldcat      = lt_fieldcat.
+
+  LOOP AT lt_fieldcat INTO ls_fieldcat.
+    CASE ls_fieldcat-fieldname.
+
+      WHEN 'PARTNER'.
+        ls_fieldcat-seltext   = 'Номер ДП'.
+        ls_fieldcat-reptext   = 'Номер ДП'.
+        ls_fieldcat-scrtext_l = 'Номер ДП'.
+        ls_fieldcat-scrtext_m = 'Номер ДП'.
+        ls_fieldcat-scrtext_s = 'Номер ДП'.
+
+      WHEN 'STATUS'.
+        ls_fieldcat-seltext   = 'Статус'.
+        ls_fieldcat-reptext   = 'Статус'.
+        ls_fieldcat-scrtext_l = 'Статус'.
+        ls_fieldcat-scrtext_m = 'Статус'.
+        ls_fieldcat-scrtext_s = 'Статус'.
+
+      WHEN 'FIAS_REG'.
+        ls_fieldcat-seltext   = 'ФИАС РЕГ.'.
+        ls_fieldcat-reptext   = 'ФИАС РЕГ.'.
+        ls_fieldcat-scrtext_l = 'ФИАС РЕГ.'.
+        ls_fieldcat-scrtext_m = 'ФИАС РЕГ.'.
+        ls_fieldcat-scrtext_s = 'ФИАС РЕГ.'.
+
+      WHEN 'FIAS_LIVE'.
+        ls_fieldcat-seltext   = 'ФИАС МЕСТ.'.
+        ls_fieldcat-reptext   = 'ФИАС МЕСТ.'.
+        ls_fieldcat-scrtext_l = 'ФИАС МЕСТ.'.
+        ls_fieldcat-scrtext_m = 'ФИАС МЕСТ.'.
+        ls_fieldcat-scrtext_s = 'ФИАС МЕСТ.'.
+
+      WHEN 'REPL'.
+        ls_fieldcat-seltext   = 'Репликация в TWR'.
+        ls_fieldcat-reptext   = 'Репликация в TWR'.
+        ls_fieldcat-scrtext_l = 'Репликация в TWR'.
+        ls_fieldcat-scrtext_m = 'Репликация в TWR'.
+        ls_fieldcat-scrtext_s = 'Репликация в TWR'.
+
+      WHEN 'ANKETA_ID'.
+        ls_fieldcat-seltext   = 'Номер анкеты'.
+        ls_fieldcat-reptext   = 'Номер анкеты'.
+        ls_fieldcat-scrtext_l = 'Номер анкеты'.
+        ls_fieldcat-scrtext_m = 'Номер анкеты'.
+        ls_fieldcat-scrtext_s = 'Номер анкеты'.
+
+      WHEN 'FAM'.
+        ls_fieldcat-seltext   = 'Фамилия'.
+        ls_fieldcat-reptext   = 'Фамилия'.
+        ls_fieldcat-scrtext_l = 'Фамилия'.
+        ls_fieldcat-scrtext_m = 'Фамилия'.
+        ls_fieldcat-scrtext_s = 'Фамилия'.
+
+      WHEN 'IM'.
+        ls_fieldcat-seltext   = 'Имя'.
+        ls_fieldcat-reptext   = 'Имя'.
+        ls_fieldcat-scrtext_l = 'Имя'.
+        ls_fieldcat-scrtext_m = 'Имя'.
+        ls_fieldcat-scrtext_s = 'Имя'.
+
+      WHEN 'OT'.
+        ls_fieldcat-seltext   = 'Отчество'.
+        ls_fieldcat-reptext   = 'Отчество'.
+        ls_fieldcat-scrtext_l = 'Отчество'.
+        ls_fieldcat-scrtext_m = 'Отчество'.
+        ls_fieldcat-scrtext_s = 'Отчество'.
+
+      WHEN 'ROWINDEX'.
+        ls_fieldcat-seltext   = 'Строка в Execel'.
+        ls_fieldcat-reptext   = 'Строка в Execel'.
+        ls_fieldcat-scrtext_l = 'Строка в Execel'.
+        ls_fieldcat-scrtext_m = 'Строка в Execel'.
+        ls_fieldcat-scrtext_s = 'Строка в Execel'.
+        ls_fieldcat-outputlen = 50.
+    ENDCASE.
+    APPEND ls_fieldcat TO lt_field.
+  ENDLOOP.
+
+  "Редактируем toolbar
+  _append_exclude_:
+  cl_gui_alv_grid=>mc_fc_detail,
+  cl_gui_alv_grid=>mc_fc_check,
+  cl_gui_alv_grid=>mc_fc_loc_copy,
+  cl_gui_alv_grid=>mc_fc_loc_copy_row,
+  cl_gui_alv_grid=>mc_fc_loc_cut,
+  cl_gui_alv_grid=>mc_fc_loc_move_row,
+  cl_gui_alv_grid=>mc_fc_loc_paste,
+  cl_gui_alv_grid=>mc_fc_loc_paste_new_row,
+  cl_gui_alv_grid=>mc_fc_loc_undo,
+  cl_gui_alv_grid=>mc_fc_print,
+  cl_gui_alv_grid=>mc_fc_print_back,
+  cl_gui_alv_grid=>mc_fc_print_prev,
+  cl_gui_alv_grid=>mc_fc_graph,
+  cl_gui_alv_grid=>mc_fc_info,
+  cl_gui_alv_grid=>mc_fc_col_invisible,
+  cl_gui_alv_grid=>mc_fc_fix_columns,
+  cl_gui_alv_grid=>mc_mb_subtot,
+  cl_gui_alv_grid=>mc_fc_views,
+  cl_gui_alv_grid=>mc_fc_view_crystal,
+  cl_gui_alv_grid=>mc_fc_view_excel,
+  cl_gui_alv_grid=>mc_fc_view_grid,
+  cl_gui_alv_grid=>mc_fc_view_lotus,
+  cl_gui_alv_grid=>mc_fc_word_processor,
+  cl_gui_alv_grid=>mc_mb_sum.
+
+  "Настраиваем вид грида
+  ls_layout-cwidth_opt = 'X'.
+  ls_layout-zebra      = 'X'.
+  ls_layout-info_fname = 'LINECOLOR'."Нужно для покраски строк
+  ls_layout-ctab_fname = 'CELLCOLOR'."Нужно для покраски полей
+  ls_layout-sel_mode   = 'A'.
+
+
+  if gt_partner is initial.
+    "Выводим ALV грид
+    CALL METHOD gr_cl_grid->set_table_for_first_display
+      EXPORTING
+        i_save               = 'A'
+        is_layout            = ls_layout
+        it_toolbar_excluding = lt_exclude
+      CHANGING
+        it_outtab            = gt_anketa
+        it_fieldcatalog      = lt_field.
+  else.
+    "Выводим ALV грид
+    CALL METHOD gr_cl_grid->set_table_for_first_display
+      EXPORTING
+        i_save               = 'A'
+        is_layout            = ls_layout
+        it_toolbar_excluding = lt_exclude
+      CHANGING
+        it_outtab            = gt_partner
+        it_fieldcatalog      = lt_field.
+  endif.
+
+  CALL METHOD gr_cl_grid->REFRESH_TABLE_DISPLAY.
+
+  CALL METHOD gr_cl_grid->set_ready_for_input
+    EXPORTING
+      i_ready_for_input = 0.
+
+  CALL METHOD gr_cl_grid->register_edit_event
+    EXPORTING
+      i_event_id = cl_gui_alv_grid=>mc_evt_modified.
+
+  CALL METHOD gr_cl_grid->register_edit_event
+    EXPORTING
+      i_event_id = cl_gui_alv_grid=>mc_evt_enter.
+
+  CALL METHOD cl_gui_cfw=>flush.
+ENDMODULE.                 " START  OUTPUT
