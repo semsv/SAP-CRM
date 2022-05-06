@@ -1,0 +1,396 @@
+FUNCTION ZFM_SSV_SOAP_SRVQ .
+*"----------------------------------------------------------------------
+*"*"Локальный интерфейс:
+*"  IMPORTING
+*"     VALUE(IV_BEG_DATETIME) TYPE  STRING
+*"     VALUE(IV_END_DATETIME) TYPE  STRING
+*"  EXPORTING
+*"     VALUE(ES_RESULT) TYPE  ZSTR_SSV_SOAP_SRVQ_RES
+*"     VALUE(ET_SRVQ) TYPE  ZTAB_SSV_SRVQ
+*"----------------------------------------------------------------------
+  DATA: LT_GUID          TYPE STANDARD TABLE OF CRMT_OBJECT_GUID,
+**        ls_orgman        TYPE crmt_1001_orgman_ui,
+**        lt_cat_lang      TYPE crmt_erms_cat_ca_lang_tab,
+**        ls_cat_lang      TYPE CRMT_ERMS_CAT_CA_LANG,
+        LV_GUID          TYPE CRMT_OBJECT_GUID,
+**        lt_subject       TYPE CRMT_SUBJECT_WRKT,
+        lt_srvq          TYPE ZTAB_SSV_SRVQ, " STANDARD TABLE OF ZSTR_SSV_SOAP_SRVQ,
+        ls_srvq          TYPE ZSTR_SSV_SOAP_SRVQ,
+        lr_doc           type ref to cl_crm_documents,
+        lv_io            type skwf_io,
+        lt_prop          TYPE SDOKPROPTYS,
+        ls_prop          type SDOKPROPTY,
+        lt_header_guid   TYPE crmt_object_guid_tab,
+        lt_text          TYPE CRMT_TEXT_WRKT,
+        ls_line          TYPE TLINE,
+        ls_text          TYPE CRMT_TEXT_WRK,
+**        lt_partner       TYPE CRMT_PARTNER_EXTERNAL_WRKT,
+**        ls_partner       TYPE CRMT_PARTNER_EXTERNAL_WRK,
+        lv_first_name    TYPE bu_namep_f,
+        lv_last_name     TYPE bu_namep_l,
+        lv_middlename    TYPE bu_namemid,
+        lv_addrcomm      TYPE bu_addrcomm,
+        lv_string        TYPE string,
+**        ls_address       TYPE bapibus1006_address,
+        lv_partner       TYPE BU_PARTNER
+        .
+
+**    TYPES: BEGIN OF zbp_tp_s_address,
+**             partner        TYPE bu_partner,
+**             regindex       TYPE ad_pstcd1,
+**             regcity        TYPE ad_city1,
+**             regstreet      TYPE ad_street,
+**             reghouse       TYPE ad_hsnm1,
+**             regcorp        TYPE ad_hsnm2,
+**             regflat        TYPE ad_roomnum,
+**             regregion      TYPE text60,
+**             regarea        TYPE text60,
+**             regnpunkt      TYPE ad_city2,
+**             regplanstr     TYPE text60,
+**           END OF zbp_tp_s_address.
+**
+**  DATA: ls_bp_addr        TYPE zbp_tp_s_address,
+**        lv_street_ext     TYPE text60,
+**        lv_city_ext       TYPE text60,
+**        lv_region_t       TYPE text60,
+**        lv_count          TYPE int4.
+
+  FIELD-SYMBOLS: <FS_SRVQ> TYPE ZSTR_SSV_SOAP_SRVQ.
+
+  REFRESH ET_SRVQ.
+  REPLACE ALL OCCURRENCES OF '-' IN IV_BEG_DATETIME WITH ''.
+  REPLACE ALL OCCURRENCES OF '-' IN IV_END_DATETIME WITH ''.
+  CONDENSE IV_BEG_DATETIME NO-GAPS.
+  CONDENSE IV_END_DATETIME NO-GAPS.
+
+  try.
+    exec sql.
+      select to_char(to_date(:IV_BEG_DATETIME, 'YYYYMMDDHH24MISS'), 'YYYYMMDDHH24MISS')
+        into :IV_BEG_DATETIME
+        from dual
+    endexec.
+    exec sql.
+      select to_char(to_date(:IV_END_DATETIME, 'YYYYMMDDHH24MISS'), 'YYYYMMDDHH24MISS')
+        into :IV_END_DATETIME
+        from dual
+    endexec.
+  catch CX_ROOT.
+    ES_RESULT-CODE = '0025'.
+  endtry.
+
+  check ES_RESULT-CODE ne '0025'. " неверный формат дат
+  create object lr_doc.
+
+  select A~GUID
+    into table LT_GUID
+    from CRMD_ORDERADM_H AS A
+*    join CRM_JEST        AS S
+*      on S~OBJNR     EQ A~GUID
+*     and S~INACT     EQ ' '
+*     and S~STAT      EQ 'E0020' "Закрыто (ст схема ZT000004, ср поиска для просмотра всех возм статусов ZSH_SSV_SRVQ_STATUS)
+   where A~PROCESS_TYPE = 'ZSRV'
+*     and CRM_CHANGED_AT between IV_BEG_DATETIME and IV_END_DATETIME
+    .
+
+  loop at LT_GUID into LV_GUID.
+    select
+           A~object_id      as objectid
+           A~description    as Subject                 " Тема обращения
+           B~INSTID_B       as DOCKEY
+           A~CRM_CHANGED_AT as ClosingTime
+           A~CREATED_AT     as ObjectDate
+           A~CREATED_AT     as DatetimeOfDiscovery
+           S~ZZSRV_RQ_EMAIL as Email
+           S~ZZSRV_RQ_TEL   as PhoneNumber
+           H~PRIORITY       as Priority
+      into corresponding fields of table lt_srvq
+      from CRMD_ORDERADM_H AS A
+      join CRMD_ACTIVITY_H AS H
+        on H~GUID         EQ A~GUID
+      left
+      join CRMD_SERVICE_H AS S
+        on S~GUID         EQ A~GUID
+"       and S~ZZSRV_RQ_CMP EQ 'X'     " галочка "Требуется возмещение"
+      left
+      join SKWG_BREL AS B
+        on B~INSTID_A EQ A~GUID
+       and B~TYPEID_A EQ A~OBJECT_TYPE
+     where A~GUID = LV_GUID.
+
+    check sy-subrc eq 0.
+
+    CLEAR: lt_header_guid, lt_text.
+    INSERT LV_GUID INTO TABLE lt_header_guid.
+*    CALL FUNCTION 'CRM_ORDER_READ'
+*      EXPORTING
+*        it_header_guid       = lt_header_guid
+*      IMPORTING
+*        et_text              = lt_text
+*        et_partner           = lt_partner
+*      EXCEPTIONS
+*        DOCUMENT_NOT_FOUND   = 1
+*      OTHERS                 = 200
+*    .
+*    if sy-subrc eq 0.
+*      read table lt_partner into ls_partner with key partner_fct = '00000001' NO_TYPE = 'BP'.
+*      move ls_partner-partner_no to lv_partner.
+*    else.
+      refresh lt_text.
+      select single b~partner
+        into lv_partner
+        from CRMD_ORDERADM_H  as a
+        join CRMD_ORDER_INDEX as i
+          on i~object_type       eq a~object_type
+         and i~header            eq a~guid
+         and i~PROCESS_TYPE_IX   eq a~process_type
+         and i~PFT_1             eq 'X'
+        join BUT000           as b
+          on b~partner           eq i~partner_no
+       where a~guid              eq LV_GUID
+      .
+      MOVE 'R' TO SY-LANGU.
+      CALL FUNCTION 'CRM_TEXT_READ_API'
+        EXPORTING
+          IT_GUID              = lt_header_guid
+          IV_OBJECT_KIND       = 'A'
+        IMPORTING
+          et_text              = lt_text
+      EXCEPTIONS
+      OTHERS                   = 1.
+
+**      data: lv_name_text  type TDOBNAME,
+**            lv_search_str type string.
+**
+**      move LV_GUID to lv_search_str.
+**      concatenate lv_search_str '%' into lv_search_str.
+**
+**      select single TDNAME
+**        into lv_name_text
+**        from STXL
+**       where TDID     eq 'S001'
+**         and TDOBJECT eq 'CRM_ORDERH'
+**         and TDSPRAS  eq 'R'
+**         and TDNAME   like lv_search_str.
+**
+***** Reading the collection text
+**    CALL FUNCTION 'READ_TEXT'
+**      EXPORTING
+***   CLIENT                        = SY-MANDT
+**        ID                           = 'S001'
+**        LANGUAGE                     = 'R'
+**        NAME                         = lv_name_text
+**        OBJECT                       = 'CRM_ORDERH'
+***   ARCHIVE_HANDLE  = 0
+***   LOCAL_CAT               = ' '
+*** IMPORTING
+***   HEADER                      =
+**      TABLES
+**        LINES                        = ls_text-lines
+**     EXCEPTIONS
+**       ID                            = 1
+**       LANGUAGE                      = 2
+**       NAME                          = 3
+**       NOT_FOUND                     = 4
+**       OBJECT                        = 5
+**       REFERENCE_CHECK               = 6
+**       WRONG_ACCESS_TO_ARCHIVE       = 7
+**       OTHERS                        = 8.
+**      ls_text-STXH-tdid = 'S005'.
+**      append ls_text to lt_text.
+*    endif.
+
+    loop at lt_srvq into ls_srvq.
+      if ls_srvq-DOCKEY is not initial.
+        replace ALL OCCURRENCES OF '/' IN ls_srvq-DOCKEY WITH '#'.
+        split ls_srvq-DOCKEY at '#' into lv_io-objtype lv_io-class lv_io-objid.
+        call method lr_doc->get_document( exporting io = lv_io importing properties = lt_prop ).
+        read table lt_prop with key name = 'FILE_NAME' into ls_prop.
+        move ls_prop-value to ls_srvq-DOCNAME.
+        read table lt_prop with key name = 'DESCRIPTION' into ls_prop.
+        move ls_prop-value to ls_srvq-DOCDESC.
+        read table lt_prop with key name = 'MIME_TYPE' into ls_prop.
+        move ls_prop-value to ls_srvq-DOCTYPE.
+        read table lt_prop with key name = 'STATE' into ls_prop.
+        move ls_prop-value to ls_srvq-DOCVERSION.
+      endif.
+
+      read table lt_text into ls_text with key STXH-tdid = 'S005'. " описание проблемы
+      if sy-subrc eq 0.
+        CLEAR ls_srvq-DESCRIPTION.
+        loop at ls_text-lines into ls_line.
+          check ls_line-TDFORMAT EQ '*'.
+          CONCATENATE ls_srvq-DESCRIPTION '*' ls_line-TDLINE INTO ls_srvq-DESCRIPTION.
+        endloop.
+      endif.
+
+      SELECT SINGLE name_first name_last namemiddle addrcomm
+        INTO (lv_first_name, lv_last_name, lv_middlename, lv_addrcomm)
+        FROM but000
+       WHERE partner = lv_partner.
+
+      if sy-subrc eq 0.
+        CONCATENATE lv_last_name lv_first_name lv_middlename INTO ls_srvq-Claimant SEPARATED BY ' '.
+        if ls_srvq-PHONENUMBER is initial.
+          select single a~TEL_NUMBER
+            into ls_srvq-PHONENUMBER
+           from ADR2 as a
+          where a~ADDRNUMBER = LV_ADDRCOMM
+            and a~R3_USER    = '3'. " Мобильный телефон
+        endif.
+        if ls_srvq-Email is initial.
+          select single a~SMTP_ADDR
+            into ls_srvq-Email
+            from ADR6 as a
+           where a~ADDRNUMBER = LV_ADDRCOMM.
+        endif.
+
+        CALL FUNCTION 'ZFM_SSV_GET_PARTNER_ADDRESS'
+          EXPORTING IV_PARTNER = lv_partner
+          IMPORTING EV_RESULT  = lv_string.
+
+        MOVE lv_string TO ls_srvq-AddressString.
+**        data: lv_datetime type BU_ADVW_VALID_TO,
+**              lv_tmpstr   type string.
+**        concatenate sy-datum sy-uzeit into lv_tmpstr.
+**        move lv_tmpstr to lv_datetime.
+**        select single addrnumber
+**          into LV_ADDRCOMM
+**          from but021_fs
+**         where partner  eq lv_partner
+**           and valid_to ge lv_datetime
+**           and adr_kind eq 'XXDEFAULT'.
+**        if sy-subrc eq 0.
+**          CALL FUNCTION 'BUPA_ADDRESS_READ_DETAIL'
+**            EXPORTING IV_PARTNER    = lv_partner
+**                      IV_ADDRNUMBER = LV_ADDRCOMM
+**            IMPORTING ES_ADDRESS    = ls_address
+**          EXCEPTIONS
+**            no_partner_specified  = 1
+**            no_valid_record_found = 2
+**          OTHERS                  = 3.
+**          .
+**          if sy-subrc eq 0.
+**
+**            ls_bp_addr-regindex  = ls_address-POSTL_COD1.
+**            ls_bp_addr-regcity   = ls_address-city.
+**            ls_bp_addr-regstreet = ls_address-street.
+**            ls_bp_addr-reghouse  = ls_address-house_no.
+***           ls_bp_addr-regcorp   = ls_address-house_no2.
+**            ls_bp_addr-regcorp   = ls_address-building.
+**            ls_bp_addr-regflat   = ls_address-room_no.
+**            ls_bp_addr-regregion = ls_address-region.
+**            ls_bp_addr-regnpunkt = ls_address-district.
+**            IF ls_address-str_abbr IS NOT INITIAL.
+**              SELECT SINGLE STRTYPE
+**                INTO lv_street_ext
+**                FROM ADRSTRTYPT
+**               WHERE STRTYPEAB eq ls_address-str_abbr
+**                 AND LANGU     eq 'R'
+**                 AND COUNTRY   eq 'RU'.
+**            ENDIF.
+**            IF ls_address-regiogroup IS NOT INITIAL.
+**              SELECT SINGLE DESCRIPT
+**                INTO lv_region_t
+**                FROM ADRREGGRPT
+**               WHERE REGIOGROUP eq ls_address-regiogroup
+**                 AND LANGU = 'R'.
+**              IF sy-subrc eq 0.
+**                ls_bp_addr-regarea = lv_region_t.
+**              ENDIF.
+**            ENDIF.
+**            IF ls_address-CITY_NO IS NOT INITIAL.
+**              SELECT SINGLE CITY_EXT
+**                INTO lv_city_ext
+**                FROM ADRCITYT
+**               WHERE CITY_CODE eq ls_address-CITY_NO
+**                 AND LANGU     eq 'R'
+**                 AND COUNTRY   eq 'RU'.
+**            ENDIF.
+**
+**            CONCATENATE ls_address-city lv_city_ext
+**                   INTO ls_bp_addr-regcity SEPARATED BY SPACE.
+**            CONCATENATE ls_address-street lv_street_ext
+**                   INTO ls_bp_addr-regstreet SEPARATED BY SPACE.
+**
+**            select single PLAN_STRUCT_NAME
+**              into ls_bp_addr-regplanstr
+**              from ZADDR_FIAS
+**             where ADDRNUMBER = LV_ADDRCOMM.
+**
+**            IF ls_address-CITY_NO is not initial and ls_address-DISTRCT_NO is initial.
+**              select count(*)
+**                into lv_count
+**                from zaddr_spr_npunkt
+**               where city_code  = ls_address-CITY_NO
+**                 and cityp_code = ls_address-DISTRCT_NO.
+**
+**              if lv_count > 0.
+**                select single district
+**                  into ls_bp_addr-regnpunkt
+**                  from zaddr_spr_npunkt
+**                 where city_code  = ls_address-CITY_NO
+**                   and cityp_code = ls_address-DISTRCT_NO.
+**                ls_bp_addr-regcity = space.
+**              endif.
+**            ENDIF.
+**
+**            CONCATENATE ls_bp_addr-regindex
+**                        ls_bp_addr-regregion
+**                        ls_bp_addr-regarea
+**                        ls_bp_addr-regcity
+**                        ls_bp_addr-regnpunkt
+**                        ls_bp_addr-regplanstr
+**                        ls_bp_addr-regstreet
+**                        ls_bp_addr-reghouse
+**                        ls_bp_addr-regcorp
+**                        ls_bp_addr-regflat
+**                   INTO ls_srvq-AddressString SEPARATED BY ','.
+**          endif.
+**        endif.
+      endif.
+      ls_srvq-System = 'SAP CRM'.
+     append ls_srvq to ET_SRVQ. "ZTAB_SRVQ.
+    endloop.
+
+***    Получаем все категории сервисной заявки
+*    CALL FUNCTION 'ZFM_CRM_BCS_SRV_RQ_GET_CAT'
+*      EXPORTING
+*        iv_order_guid = lv_guid
+*      IMPORTING
+*        et_cat_lang   = lt_cat_lang.
+*
+*    read table lt_cat_lang index 1 into ls_cat_lang.
+*    if sy-subrc eq 0.
+*      LOOP at ZTAB_SRVQ assigning <FS_SRVQ> where objectid = ls_srvq-objectid.
+*        move ls_cat_lang-CAT_LABL to <FS_SRVQ>-Subject.
+*      endloop.
+*    endif.
+
+*    CALL FUNCTION 'CRM_SUBJECT_READ_OW'
+*      EXPORTING
+*        iv_ref_guid    = LV_GUID
+*        iv_ref_kind    = 'A'
+*      IMPORTING
+*        et_subject_wrk = lt_subject
+*      EXCEPTIONS
+*        error_occurred = 1
+*        OTHERS         = 2.
+
+*     CALL FUNCTION 'CRM_INTLAY_GET_DATA'
+*       EXPORTING
+*         iv_guid           = lv_guid
+*         iv_kind           = 'A'
+*         iv_interfacename  = 'CRMT_1001_ORGMAN_UI'
+*       IMPORTING
+*         es_interfacevalue = ls_orgman
+*       EXCEPTIONS
+*         error_occurred    = 1
+*         no_valid_guid     = 2
+*         others            = 3.
+  endloop.
+
+  SORT ET_SRVQ BY ClosingTime ASCENDING.
+  ES_RESULT-CODE = '0000'.
+  free lr_doc.
+
+ENDFUNCTION.
