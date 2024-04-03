@@ -1,42 +1,42 @@
-CREATE OR REPLACE PACKAGE UBRR_CRM.UBRR_UPDATE_RTDM IS
-  -- пакет предназначен для обновления информации в таблицах RTDM минуя RISKDWH 
+п»їCREATE OR REPLACE PACKAGE UBRR_CRM.UBRR_UPDATE_RTDM IS
+  -- РїР°РєРµС‚ РїСЂРµРґРЅР°Р·РЅР°С‡РµРЅ РґР»СЏ РѕР±РЅРѕРІР»РµРЅРёСЏ РёРЅС„РѕСЂРјР°С†РёРё РІ С‚Р°Р±Р»РёС†Р°С… RTDM РјРёРЅСѓСЏ RISKDWH 
 
 /******************************************** HISTORY **********************************************\
-       Дата          Автор            id          Описание
+       Р”Р°С‚Р°          РђРІС‚РѕСЂ            id          РћРїРёСЃР°РЅРёРµ
     ----------  ---------------   ----------  ------------------------------------------------------
-    30.01.2023   Комилов А.А.     RRTDM-4237  Заполнение MAP_PRODUCT_OLD в RTDM типами ЕМН
-    12.09.2020   Багаев М.С.       20-77311   Разработка пакета - Обновление таблиц по запросу      
+    30.01.2023   РљРѕРјРёР»РѕРІ Рђ.Рђ.     RRTDM-4237  Р—Р°РїРѕР»РЅРµРЅРёРµ MAP_PRODUCT_OLD РІ RTDM С‚РёРїР°РјРё Р•РњРќ
+    12.09.2020   Р‘Р°РіР°РµРІ Рњ.РЎ.       20-77311   Р Р°Р·СЂР°Р±РѕС‚РєР° РїР°РєРµС‚Р° - РћР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС† РїРѕ Р·Р°РїСЂРѕСЃСѓ      
 
 \******************************************** HISTORY **********************************************/
 
--- обновление таблицы SAS_RTDM.PRODUCT_RTDM@RTDM
+-- РѕР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС†С‹ SAS_RTDM.PRODUCT_RTDM@RTDM
 procedure update_product_rtdm;    
 
--- Старый метод для обновление таблицы SAS_RTDM.PRODUCT_RTDM@RTDM
+-- РЎС‚Р°СЂС‹Р№ РјРµС‚РѕРґ РґР»СЏ РѕР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС†С‹ SAS_RTDM.PRODUCT_RTDM@RTDM
 procedure update_product_rtdm_old;
 
--- обновление таблицы SAS_RTDM.MAP_PRODUCT@RTDM
+-- РѕР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС†С‹ SAS_RTDM.MAP_PRODUCT@RTDM
 procedure update_map_product_rtdm;
 
--- обновление таблицы sas_rtdm.map_product_old@rtdm
+-- РѕР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС†С‹ sas_rtdm.map_product_old@rtdm
 procedure update_map_product_old_rtdm;        
 
 end;
 /
 CREATE OR REPLACE PACKAGE BODY UBRR_CRM."UBRR_UPDATE_RTDM" IS
-  -- пакет предназначен для обновления информации в таблицах RTDM минуя RISKDWH
+  -- РїР°РєРµС‚ РїСЂРµРґРЅР°Р·РЅР°С‡РµРЅ РґР»СЏ РѕР±РЅРѕРІР»РµРЅРёСЏ РёРЅС„РѕСЂРјР°С†РёРё РІ С‚Р°Р±Р»РёС†Р°С… RTDM РјРёРЅСѓСЏ RISKDWH
 
 /******************************************** HISTORY **********************************************\
-       Дата          Автор            id          Описание
+       Р”Р°С‚Р°          РђРІС‚РѕСЂ            id          РћРїРёСЃР°РЅРёРµ
     ----------  ---------------   ----------  ------------------------------------------------------
-    21.03.2024   Севастьянов С.В. RRTDM-6582  Ошибки при работе джоба UBRR_CRM.UPDATE_PRODUCT_RTDM_JOB на UVKL
-    30.01.2023   Комилов А.А.     RRTDM-4237  Заполнение MAP_PRODUCT_OLD в RTDM типами ЕМН
-    12.09.2020   Багаев М.С.       20-77311   Разработка пакета - Обновление таблиц по запросу
+    21.03.2024   РЎРµРІР°СЃС‚СЊСЏРЅРѕРІ РЎ.Р’. RRTDM-6582  РћС€РёР±РєРё РїСЂРё СЂР°Р±РѕС‚Рµ РґР¶РѕР±Р° UBRR_CRM.UPDATE_PRODUCT_RTDM_JOB РЅР° UVKL
+    30.01.2023   РљРѕРјРёР»РѕРІ Рђ.Рђ.     RRTDM-4237  Р—Р°РїРѕР»РЅРµРЅРёРµ MAP_PRODUCT_OLD РІ RTDM С‚РёРїР°РјРё Р•РњРќ
+    12.09.2020   Р‘Р°РіР°РµРІ Рњ.РЎ.       20-77311   Р Р°Р·СЂР°Р±РѕС‚РєР° РїР°РєРµС‚Р° - РћР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС† РїРѕ Р·Р°РїСЂРѕСЃСѓ
 
 \******************************************** HISTORY **********************************************/
 
 
-  -- логирование процесса
+  -- Р»РѕРіРёСЂРѕРІР°РЅРёРµ РїСЂРѕС†РµСЃСЃР°
 procedure logwrite (i_text varchar2) is
     pragma autonomous_transaction;
 begin
@@ -44,41 +44,41 @@ begin
     commit;
 end logwrite;
 
-  -- обновление таблицы SAS_RTDM.PRODUCT_RTDM@RTDM
+  -- РѕР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС†С‹ SAS_RTDM.PRODUCT_RTDM@RTDM
 procedure update_product_rtdm_old
   is
     v_rowcnt NUMBER;
     pragma autonomous_transaction;
 begin  
-  -->> ubrr 21.03.2024 Севастьянов С.В. RRTDM-6582
+  -->> ubrr 21.03.2024 РЎРµРІР°СЃС‚СЊСЏРЅРѕРІ РЎ.Р’. RRTDM-6582
   if ubrr_vlv.code_block.is_block_enabled('UBRR_CRM.UBRR_UPDATE_RTDM RRTDM-6582') then
     MERGE INTO sas_rtdm.product_rtdm@rtdm D
     USING ( select
-             x.TYPEDOG_ID          as ARM_TP_TYPE,        -- Номер продукта АРМ ТП
-             x.TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- Наименование типа продукта RTDM
-             x.typedog_currency    as TYPEDOG_CURRENCY,   -- Валюта кредита (карточного счета)
-             x.typedog_scred_m     as TYPEDOG_SCRED_M,    -- Срок кредита (месяц),
-           --  x.typedog_proc_cred   as TYPEDOG_PROC_CRED,  -- Проценты по кредиту
-             case when x3.percentvalue is null then x.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- Проценты по кредиту
-             x.typedog_limit_metod as TYPEDOG_LIMIT_METOD,-- Методика расчета лимита в АРМ МР
-             x.typedog_min_sum     as TYPEDOG_MIN_SUM,    -- Минимальная сумма кредита
-             x.typedog_max_sum     as TYPEDOG_MAX_SUM,    -- Максимальная сумма кредита
-             case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Реструктурируемый (1) / не реструктурируемый (0)
+             x.TYPEDOG_ID          as ARM_TP_TYPE,        -- РќРѕРјРµСЂ РїСЂРѕРґСѓРєС‚Р° РђР Рњ РўРџ
+             x.TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- РќР°РёРјРµРЅРѕРІР°РЅРёРµ С‚РёРїР° РїСЂРѕРґСѓРєС‚Р° RTDM
+             x.typedog_currency    as TYPEDOG_CURRENCY,   -- Р’Р°Р»СЋС‚Р° РєСЂРµРґРёС‚Р° (РєР°СЂС‚РѕС‡РЅРѕРіРѕ СЃС‡РµС‚Р°)
+             x.typedog_scred_m     as TYPEDOG_SCRED_M,    -- РЎСЂРѕРє РєСЂРµРґРёС‚Р° (РјРµСЃСЏС†),
+           --  x.typedog_proc_cred   as TYPEDOG_PROC_CRED,  -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
+             case when x3.percentvalue is null then x.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
+             x.typedog_limit_metod as TYPEDOG_LIMIT_METOD,-- РњРµС‚РѕРґРёРєР° СЂР°СЃС‡РµС‚Р° Р»РёРјРёС‚Р° РІ РђР Рњ РњР 
+             x.typedog_min_sum     as TYPEDOG_MIN_SUM,    -- РњРёРЅРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+             x.typedog_max_sum     as TYPEDOG_MAX_SUM,    -- РњР°РєСЃРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+             case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Р РµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (1) / РЅРµ СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (0)
              from ubrr_vdata.ubrr_scoring_typedog x
              left OUTER join
                      ( SELECT *       FROM ubrr_vdata.UBRR_SHM_VIEW_SCORING_GRPCON grp_ct
                       LEFT OUTER JOIN ubrr_vdata.UBRR_TAB_SCORING_GRP2AGGREG g2a ON g2a.id_grp = grp_ct.igrp_id
-                      where id_aggreg = 5     -- Объединение 5 - реструктуризация;
+                      where id_aggreg = 5     -- РћР±СЉРµРґРёРЅРµРЅРёРµ 5 - СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёР·Р°С†РёСЏ;
                      ) x4
              on x.TYPEDOG_CTYPE_CRED = x4.CONTRTYPE
-             left join  -- Проценты по кредиту
+             left join  -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
              (
               select x.id as typedog_prc_id,
                 x2.percentvalue,
                 row_number () over (partition by x1.ID order by x1.PRCDATE desc) nm
               from a4m.tPercentName@A4MBO x
                 left join a4m.tPercentHistory@A4MBO x1 on x.id = x1.id
-                                           and x.branch = x1.branch --<< 13.05.2020 Кокотов А.А. по примерам объдинения этих таблиц с базы TWR
+                                           and x.branch = x1.branch --<< 13.05.2020 РљРѕРєРѕС‚РѕРІ Рђ.Рђ. РїРѕ РїСЂРёРјРµСЂР°Рј РѕР±СЉРґРёРЅРµРЅРёСЏ СЌС‚РёС… С‚Р°Р±Р»РёС† СЃ Р±Р°Р·С‹ TWR
                 left join a4m.TPERCENTVALUE@A4MBO x2 on x1.code = x2.code
                  where x.category = 1 and x.dimension = 1
                ) x3 on x3.typedog_prc_id = x.typedog_prc_id and x3.nm=1
@@ -91,72 +91,72 @@ begin
     insert into SAS_RTDM.PRODUCT_RTDM@RTDM
       (ARM_TP_TYPE,ARM_TP_TYPE_NAME,TYPEDOG_CURRENCY,TYPEDOG_SCRED_M,TYPEDOG_PROC_CRED,TYPEDOG_LIMIT_METOD,TYPEDOG_MIN_SUM,TYPEDOG_MAX_SUM,RESTR)
       select  
-        TYPEDOG_ID          as ARM_TP_TYPE,        -- Номер продукта АРМ ТП
-        TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- Наименование типа продукта RTDM
-        TYPEDOG_CURRENCY    as TYPEDOG_CURRENCY,   -- Валюта кредита (карточного счета)
-        TYPEDOG_SCRED_M     as TYPEDOG_SCRED_M,    -- Срок кредита (месяц)
-        case when x3.percentvalue is null then a.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- Проценты по кредиту
-        TYPEDOG_LIMIT_METOD as TYPEDOG_LIMIT_METOD,-- Методика расчета лимита в АРМ МР
-        TYPEDOG_MIN_SUM     as TYPEDOG_MIN_SUM,    -- Минимальная сумма кредита
-        TYPEDOG_MAX_SUM     as TYPEDOG_MAX_SUM,    -- Максимальная сумма кредита
-        case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Реструктурируемый (1) / не реструктурируемый (0) 
+        TYPEDOG_ID          as ARM_TP_TYPE,        -- РќРѕРјРµСЂ РїСЂРѕРґСѓРєС‚Р° РђР Рњ РўРџ
+        TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- РќР°РёРјРµРЅРѕРІР°РЅРёРµ С‚РёРїР° РїСЂРѕРґСѓРєС‚Р° RTDM
+        TYPEDOG_CURRENCY    as TYPEDOG_CURRENCY,   -- Р’Р°Р»СЋС‚Р° РєСЂРµРґРёС‚Р° (РєР°СЂС‚РѕС‡РЅРѕРіРѕ СЃС‡РµС‚Р°)
+        TYPEDOG_SCRED_M     as TYPEDOG_SCRED_M,    -- РЎСЂРѕРє РєСЂРµРґРёС‚Р° (РјРµСЃСЏС†)
+        case when x3.percentvalue is null then a.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
+        TYPEDOG_LIMIT_METOD as TYPEDOG_LIMIT_METOD,-- РњРµС‚РѕРґРёРєР° СЂР°СЃС‡РµС‚Р° Р»РёРјРёС‚Р° РІ РђР Рњ РњР 
+        TYPEDOG_MIN_SUM     as TYPEDOG_MIN_SUM,    -- РњРёРЅРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+        TYPEDOG_MAX_SUM     as TYPEDOG_MAX_SUM,    -- РњР°РєСЃРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+        case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Р РµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (1) / РЅРµ СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (0) 
      from ubrr_vdata.ubrr_scoring_typedog a
      left OUTER join
        ( SELECT *       FROM ubrr_vdata.UBRR_SHM_VIEW_SCORING_GRPCON grp_ct
                         LEFT OUTER JOIN ubrr_vdata.UBRR_TAB_SCORING_GRP2AGGREG g2a ON g2a.id_grp = grp_ct.igrp_id
-                        where id_aggreg = 5     -- Объединение 5 - реструктуризация;
+                        where id_aggreg = 5     -- РћР±СЉРµРґРёРЅРµРЅРёРµ 5 - СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёР·Р°С†РёСЏ;
        ) x4      
      on a.TYPEDOG_CTYPE_CRED = x4.CONTRTYPE
-     left join  -- Проценты по кредиту
+     left join  -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
      (
       select x.id as typedog_prc_id, 
       x2.percentvalue, 
       row_number () over (partition by x1.ID order by x1.PRCDATE desc) nm
       from a4m.tPercentName@A4MBO x
       left join a4m.tPercentHistory@A4MBO x1 on x.id = x1.id
-                                           and x.branch = x1.branch --<< 13.05.2020 Кокотов А.А. по примерам объдинения этих таблиц с базы TWR
+                                           and x.branch = x1.branch --<< 13.05.2020 РљРѕРєРѕС‚РѕРІ Рђ.Рђ. РїРѕ РїСЂРёРјРµСЂР°Рј РѕР±СЉРґРёРЅРµРЅРёСЏ СЌС‚РёС… С‚Р°Р±Р»РёС† СЃ Р±Р°Р·С‹ TWR
       left join a4m.TPERCENTVALUE@A4MBO x2 on x1.code = x2.code
                 where x.category = 1 and x.dimension = 1
      ) x3 on x3.typedog_prc_id = a.typedog_prc_id and x3.nm=1   
-     where TYPEDOG_ID in -- выделим разницу
+     where TYPEDOG_ID in -- РІС‹РґРµР»РёРј СЂР°Р·РЅРёС†Сѓ
        (
        select TYPEDOG_ID  from ubrr_vdata.ubrr_scoring_typedog  
        minus
        select to_number(ARM_TP_TYPE) from SAS_RTDM.PRODUCT_RTDM@RTDM   
        ) ;      
   end if;
-  --<< ubrr 21.03.2024 Севастьянов С.В. RRTDM-6582
+  --<< ubrr 21.03.2024 РЎРµРІР°СЃС‚СЊСЏРЅРѕРІ РЎ.Р’. RRTDM-6582
   v_rowcnt:=SQL%ROWCOUNT;   
   commit;       
   logwrite ('update SAS_RTDM.PRODUCT_RTDM@RTDM: insert '||v_rowcnt||' rows' );
   
   MERGE INTO sas_rtdm.product_rtdm@rtdm D
   USING ( select 
-           x.TYPEDOG_ID          as ARM_TP_TYPE,        -- Номер продукта АРМ ТП
-           x.TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- Наименование типа продукта RTDM
-           x.typedog_currency    as TYPEDOG_CURRENCY,   -- Валюта кредита (карточного счета)
-           x.typedog_scred_m     as TYPEDOG_SCRED_M,    -- Срок кредита (месяц),
-         --  x.typedog_proc_cred   as TYPEDOG_PROC_CRED,  -- Проценты по кредиту
-           case when x3.percentvalue is null then x.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- Проценты по кредиту
-           x.typedog_limit_metod as TYPEDOG_LIMIT_METOD,-- Методика расчета лимита в АРМ МР
-           x.typedog_min_sum     as TYPEDOG_MIN_SUM,    -- Минимальная сумма кредита
-           x.typedog_max_sum     as TYPEDOG_MAX_SUM,    -- Максимальная сумма кредита
-           case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Реструктурируемый (1) / не реструктурируемый (0) 
+           x.TYPEDOG_ID          as ARM_TP_TYPE,        -- РќРѕРјРµСЂ РїСЂРѕРґСѓРєС‚Р° РђР Рњ РўРџ
+           x.TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- РќР°РёРјРµРЅРѕРІР°РЅРёРµ С‚РёРїР° РїСЂРѕРґСѓРєС‚Р° RTDM
+           x.typedog_currency    as TYPEDOG_CURRENCY,   -- Р’Р°Р»СЋС‚Р° РєСЂРµРґРёС‚Р° (РєР°СЂС‚РѕС‡РЅРѕРіРѕ СЃС‡РµС‚Р°)
+           x.typedog_scred_m     as TYPEDOG_SCRED_M,    -- РЎСЂРѕРє РєСЂРµРґРёС‚Р° (РјРµСЃСЏС†),
+         --  x.typedog_proc_cred   as TYPEDOG_PROC_CRED,  -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
+           case when x3.percentvalue is null then x.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
+           x.typedog_limit_metod as TYPEDOG_LIMIT_METOD,-- РњРµС‚РѕРґРёРєР° СЂР°СЃС‡РµС‚Р° Р»РёРјРёС‚Р° РІ РђР Рњ РњР 
+           x.typedog_min_sum     as TYPEDOG_MIN_SUM,    -- РњРёРЅРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+           x.typedog_max_sum     as TYPEDOG_MAX_SUM,    -- РњР°РєСЃРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+           case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Р РµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (1) / РЅРµ СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (0) 
            from ubrr_vdata.ubrr_scoring_typedog x 
            left OUTER join
                      ( SELECT *       FROM ubrr_vdata.UBRR_SHM_VIEW_SCORING_GRPCON grp_ct
                       LEFT OUTER JOIN ubrr_vdata.UBRR_TAB_SCORING_GRP2AGGREG g2a ON g2a.id_grp = grp_ct.igrp_id
-                      where id_aggreg = 5     -- Объединение 5 - реструктуризация;
+                      where id_aggreg = 5     -- РћР±СЉРµРґРёРЅРµРЅРёРµ 5 - СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёР·Р°С†РёСЏ;
                      ) x4      
            on x.TYPEDOG_CTYPE_CRED = x4.CONTRTYPE
-           left join  -- Проценты по кредиту
+           left join  -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
            (
             select x.id as typedog_prc_id, 
               x2.percentvalue, 
               row_number () over (partition by x1.ID order by x1.PRCDATE desc) nm
             from a4m.tPercentName@A4MBO x
               left join a4m.tPercentHistory@A4MBO x1 on x.id = x1.id
-                                         and x.branch = x1.branch --<< 13.05.2020 Кокотов А.А. по примерам объдинения этих таблиц с базы TWR
+                                         and x.branch = x1.branch --<< 13.05.2020 РљРѕРєРѕС‚РѕРІ Рђ.Рђ. РїРѕ РїСЂРёРјРµСЂР°Рј РѕР±СЉРґРёРЅРµРЅРёСЏ СЌС‚РёС… С‚Р°Р±Р»РёС† СЃ Р±Р°Р·С‹ TWR
               left join a4m.TPERCENTVALUE@A4MBO x2 on x1.code = x2.code
                where x.category = 1 and x.dimension = 1
              ) x3 on x3.typedog_prc_id = x.typedog_prc_id and x3.nm=1           
@@ -177,7 +177,7 @@ begin
                      
 end;
 
--- Новый метод обновление таблицы SAS_RTDM.PRODUCT_RTDM@RTDM
+-- РќРѕРІС‹Р№ РјРµС‚РѕРґ РѕР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС†С‹ SAS_RTDM.PRODUCT_RTDM@RTDM
 procedure update_product_rtdm
   is
     maxrowfetch constant NUMBER := 1000;
@@ -210,17 +210,17 @@ procedure update_product_rtdm
         left OUTER join
         ( SELECT *       FROM ubrr_vdata.UBRR_SHM_VIEW_SCORING_GRPCON grp_ct
                          LEFT OUTER JOIN ubrr_vdata.UBRR_TAB_SCORING_GRP2AGGREG g2a ON g2a.id_grp = grp_ct.igrp_id
-                         where id_aggreg = 5     -- Объединение 5 - реструктуризация;
+                         where id_aggreg = 5     -- РћР±СЉРµРґРёРЅРµРЅРёРµ 5 - СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёР·Р°С†РёСЏ;
         ) x4      
           on a.TYPEDOG_CTYPE_CRED = x4.CONTRTYPE
-     left join  -- Проценты по кредиту
+     left join  -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
        ( select x.id as typedog_prc_id, 
                 x2.percentvalue, 
                 row_number () over (partition by x1.ID order by x1.PRCDATE desc) nm
            from ubrr_crm.ubrr_a4m_tpercentname x
            left join ubrr_crm.ubrr_a4m_tpercenthistory x1 
                   on x.id = x1.id
-                 and x.branch = x1.branch --<< 13.05.2020 Кокотов А.А. по примерам объдинения этих таблиц с базы TWR
+                 and x.branch = x1.branch --<< 13.05.2020 РљРѕРєРѕС‚РѕРІ Рђ.Рђ. РїРѕ РїСЂРёРјРµСЂР°Рј РѕР±СЉРґРёРЅРµРЅРёСЏ СЌС‚РёС… С‚Р°Р±Р»РёС† СЃ Р±Р°Р·С‹ TWR
            left join ubrr_crm.ubrr_a4m_tpercentvalue x2 
                   on x1.code = x2.code
                where x.category = 1 
@@ -230,30 +230,30 @@ procedure update_product_rtdm
     
     cursor cur1 is
       select
-        TYPEDOG_ID          as ARM_TP_TYPE,        -- Номер продукта АРМ ТП
-        TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- Наименование типа продукта RTDM
-        TYPEDOG_CURRENCY    as TYPEDOG_CURRENCY,   -- Валюта кредита (карточного счета)
-        TYPEDOG_SCRED_M     as TYPEDOG_SCRED_M,    -- Срок кредита (месяц)
-        case when x3.percentvalue is null then a.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- Проценты по кредиту
-        TYPEDOG_LIMIT_METOD as TYPEDOG_LIMIT_METOD,-- Методика расчета лимита в АРМ МР
-        TYPEDOG_MIN_SUM     as TYPEDOG_MIN_SUM,    -- Минимальная сумма кредита
-        TYPEDOG_MAX_SUM     as TYPEDOG_MAX_SUM,    -- Максимальная сумма кредита
-        case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Реструктурируемый (1) / не реструктурируемый (0) 
+        TYPEDOG_ID          as ARM_TP_TYPE,        -- РќРѕРјРµСЂ РїСЂРѕРґСѓРєС‚Р° РђР Рњ РўРџ
+        TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- РќР°РёРјРµРЅРѕРІР°РЅРёРµ С‚РёРїР° РїСЂРѕРґСѓРєС‚Р° RTDM
+        TYPEDOG_CURRENCY    as TYPEDOG_CURRENCY,   -- Р’Р°Р»СЋС‚Р° РєСЂРµРґРёС‚Р° (РєР°СЂС‚РѕС‡РЅРѕРіРѕ СЃС‡РµС‚Р°)
+        TYPEDOG_SCRED_M     as TYPEDOG_SCRED_M,    -- РЎСЂРѕРє РєСЂРµРґРёС‚Р° (РјРµСЃСЏС†)
+        case when x3.percentvalue is null then a.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
+        TYPEDOG_LIMIT_METOD as TYPEDOG_LIMIT_METOD,-- РњРµС‚РѕРґРёРєР° СЂР°СЃС‡РµС‚Р° Р»РёРјРёС‚Р° РІ РђР Рњ РњР 
+        TYPEDOG_MIN_SUM     as TYPEDOG_MIN_SUM,    -- РњРёРЅРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+        TYPEDOG_MAX_SUM     as TYPEDOG_MAX_SUM,    -- РњР°РєСЃРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+        case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Р РµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (1) / РЅРµ СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (0) 
      from ubrr_vdata.ubrr_scoring_typedog a
      left OUTER join
        ( SELECT *       FROM ubrr_vdata.UBRR_SHM_VIEW_SCORING_GRPCON grp_ct
                         LEFT OUTER JOIN ubrr_vdata.UBRR_TAB_SCORING_GRP2AGGREG g2a ON g2a.id_grp = grp_ct.igrp_id
-                        where id_aggreg = 5     -- Объединение 5 - реструктуризация;
+                        where id_aggreg = 5     -- РћР±СЉРµРґРёРЅРµРЅРёРµ 5 - СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёР·Р°С†РёСЏ;
        ) x4      
      on a.TYPEDOG_CTYPE_CRED = x4.CONTRTYPE
-     left join  -- Проценты по кредиту
+     left join  -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
        ( select x.id as typedog_prc_id, 
                 x2.percentvalue, 
                 row_number () over (partition by x1.ID order by x1.PRCDATE desc) nm
            from ubrr_crm.ubrr_a4m_tpercentname x
            left join ubrr_crm.ubrr_a4m_tpercenthistory x1 
                   on x.id = x1.id
-                 and x.branch = x1.branch --<< 13.05.2020 Кокотов А.А. по примерам объдинения этих таблиц с базы TWR
+                 and x.branch = x1.branch --<< 13.05.2020 РљРѕРєРѕС‚РѕРІ Рђ.Рђ. РїРѕ РїСЂРёРјРµСЂР°Рј РѕР±СЉРґРёРЅРµРЅРёСЏ СЌС‚РёС… С‚Р°Р±Р»РёС† СЃ Р±Р°Р·С‹ TWR
            left join ubrr_crm.ubrr_a4m_tpercentvalue x2 
                   on x1.code = x2.code
                where x.category = 1 
@@ -265,31 +265,31 @@ procedure update_product_rtdm
       select S.*
         from ubrr_crm.Ubrr_Rtdm_Product D
         join ( select
-           x.TYPEDOG_ID          as ARM_TP_TYPE,        -- Номер продукта АРМ ТП
-           x.TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- Наименование типа продукта RTDM
-           x.typedog_currency    as TYPEDOG_CURRENCY,   -- Валюта кредита (карточного счета)
-           x.typedog_scred_m     as TYPEDOG_SCRED_M,    -- Срок кредита (месяц),
-         --  x.typedog_proc_cred   as TYPEDOG_PROC_CRED,  -- Проценты по кредиту
-           case when x3.percentvalue is null then x.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- Проценты по кредиту
-           x.typedog_limit_metod as TYPEDOG_LIMIT_METOD,-- Методика расчета лимита в АРМ МР
-           x.typedog_min_sum     as TYPEDOG_MIN_SUM,    -- Минимальная сумма кредита
-           x.typedog_max_sum     as TYPEDOG_MAX_SUM,    -- Максимальная сумма кредита
-           case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Реструктурируемый (1) / не реструктурируемый (0)
+           x.TYPEDOG_ID          as ARM_TP_TYPE,        -- РќРѕРјРµСЂ РїСЂРѕРґСѓРєС‚Р° РђР Рњ РўРџ
+           x.TYPEDOG_NAME        as ARM_TP_TYPE_NAME,   -- РќР°РёРјРµРЅРѕРІР°РЅРёРµ С‚РёРїР° РїСЂРѕРґСѓРєС‚Р° RTDM
+           x.typedog_currency    as TYPEDOG_CURRENCY,   -- Р’Р°Р»СЋС‚Р° РєСЂРµРґРёС‚Р° (РєР°СЂС‚РѕС‡РЅРѕРіРѕ СЃС‡РµС‚Р°)
+           x.typedog_scred_m     as TYPEDOG_SCRED_M,    -- РЎСЂРѕРє РєСЂРµРґРёС‚Р° (РјРµСЃСЏС†),
+         --  x.typedog_proc_cred   as TYPEDOG_PROC_CRED,  -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
+           case when x3.percentvalue is null then x.typedog_prc_id else x3.percentvalue end as TYPEDOG_PROC_CRED, -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
+           x.typedog_limit_metod as TYPEDOG_LIMIT_METOD,-- РњРµС‚РѕРґРёРєР° СЂР°СЃС‡РµС‚Р° Р»РёРјРёС‚Р° РІ РђР Рњ РњР 
+           x.typedog_min_sum     as TYPEDOG_MIN_SUM,    -- РњРёРЅРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+           x.typedog_max_sum     as TYPEDOG_MAX_SUM,    -- РњР°РєСЃРёРјР°Р»СЊРЅР°СЏ СЃСѓРјРјР° РєСЂРµРґРёС‚Р°
+           case when x4.CONTRTYPE is not null then 1 else 0 end  RESTR -- Р РµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (1) / РЅРµ СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёСЂСѓРµРјС‹Р№ (0)
            from ubrr_vdata.ubrr_scoring_typedog x
            left OUTER join
                      ( SELECT *       FROM ubrr_vdata.UBRR_SHM_VIEW_SCORING_GRPCON grp_ct
                       LEFT OUTER JOIN ubrr_vdata.UBRR_TAB_SCORING_GRP2AGGREG g2a ON g2a.id_grp = grp_ct.igrp_id
-                      where id_aggreg = 5     -- Объединение 5 - реструктуризация;
+                      where id_aggreg = 5     -- РћР±СЉРµРґРёРЅРµРЅРёРµ 5 - СЂРµСЃС‚СЂСѓРєС‚СѓСЂРёР·Р°С†РёСЏ;
                      ) x4
            on x.TYPEDOG_CTYPE_CRED = x4.CONTRTYPE
-           left join  -- Проценты по кредиту
+           left join  -- РџСЂРѕС†РµРЅС‚С‹ РїРѕ РєСЂРµРґРёС‚Сѓ
            (
             select x.id as typedog_prc_id,
               x2.percentvalue,
               row_number () over (partition by x1.ID order by x1.PRCDATE desc) nm
             from ubrr_crm.ubrr_a4m_tpercentname x
               left join ubrr_crm.ubrr_a4m_tpercenthistory x1 on x.id = x1.id
-                                         and x.branch = x1.branch --<< 13.05.2020 Кокотов А.А. по примерам объдинения этих таблиц с базы TWR
+                                         and x.branch = x1.branch --<< 13.05.2020 РљРѕРєРѕС‚РѕРІ Рђ.Рђ. РїРѕ РїСЂРёРјРµСЂР°Рј РѕР±СЉРґРёРЅРµРЅРёСЏ СЌС‚РёС… С‚Р°Р±Р»РёС† СЃ Р±Р°Р·С‹ TWR
               left join ubrr_crm.ubrr_a4m_tpercentvalue x2 on x1.code = x2.code
                where x.category = 1 and x.dimension = 1
              ) x3 on x3.typedog_prc_id = x.typedog_prc_id and x3.nm=1
@@ -314,7 +314,7 @@ begin
       close cur1;
       exit;
     end if;
-    if cur1%isopen then close cur1; end if; -- закрываем курсор
+    if cur1%isopen then close cur1; end if; -- Р·Р°РєСЂС‹РІР°РµРј РєСѓСЂСЃРѕСЂ
     
     if vcurrow.count = 0 then exit; end if;
     dbms_output.put_line('fetch to insert row count: ' || vcurrow.count);
@@ -352,7 +352,7 @@ begin
     end loop;
     commit;
     v_rowcnt := v_rowcnt + vcurrow.count;
-    vcurrow.delete; -- освобождаем память
+    vcurrow.delete; -- РѕСЃРІРѕР±РѕР¶РґР°РµРј РїР°РјСЏС‚СЊ
   end loop;
   
   commit;
@@ -411,7 +411,7 @@ begin
     end loop;
     commit;
     v_rowcnt := v_rowcnt + vcurrow2.count;
-    vcurrow2.delete; -- освобождаем память
+    vcurrow2.delete; -- РѕСЃРІРѕР±РѕР¶РґР°РµРј РїР°РјСЏС‚СЊ
     if v_currcnt <= 0 then exit; end if;
   end loop;
   if cur2%isopen then close cur2; end if;
@@ -433,7 +433,7 @@ end;
 
 
 
-  -- обновление таблицы UBRR_CRM.UBRR_RTDM_MAP_PRODUCT
+  -- РѕР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС†С‹ UBRR_CRM.UBRR_RTDM_MAP_PRODUCT
 procedure update_map_product_rtdm
   is
     v_rowcnt NUMBER;
@@ -494,8 +494,8 @@ begin
   logwrite ('update SAS_RTDM.MAP_PRODUCT@RTDM: merge '||v_rowcnt||' rows' );
 end;
 
-  -->> 30.01.2023 Комилов А.А. RRTDM-4237 Заполнение MAP_PRODUCT_OLD в RTDM типами ЕМН
-  -- обновление таблицы sas_rtdm.map_product_old@rtdm
+  -->> 30.01.2023 РљРѕРјРёР»РѕРІ Рђ.Рђ. RRTDM-4237 Р—Р°РїРѕР»РЅРµРЅРёРµ MAP_PRODUCT_OLD РІ RTDM С‚РёРїР°РјРё Р•РњРќ
+  -- РѕР±РЅРѕРІР»РµРЅРёРµ С‚Р°Р±Р»РёС†С‹ sas_rtdm.map_product_old@rtdm
   procedure update_map_product_old_rtdm as
     v_rowcnt number;
   begin
@@ -518,7 +518,7 @@ end;
 
   logwrite ('update SAS_RTDM.MAP_PRODUCT_OLD@RTDM: inserted '||v_rowcnt||' rows' );
   end;
-  --<< 30.01.2023 Комилов А.А. RRTDM-4237 Заполнение MAP_PRODUCT_OLD в RTDM типами ЕМН
+  --<< 30.01.2023 РљРѕРјРёР»РѕРІ Рђ.Рђ. RRTDM-4237 Р—Р°РїРѕР»РЅРµРЅРёРµ MAP_PRODUCT_OLD РІ RTDM С‚РёРїР°РјРё Р•РњРќ
 
 end;
 /
