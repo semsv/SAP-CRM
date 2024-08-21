@@ -1,9 +1,9 @@
 select t.table_name table_name,
-       t.table_size table_size_KB,
+       t.table_size table_size_MB,
        i.index_name index_name,
-       i.index_size index_size_KB
+       i.index_size index_size_MB
   from (select segment_name table_name, 
-               ceil(sum(bytes) / #cc66cc;">1024) table_size
+               round(sum(bytes) / 1024 / 1024) table_size
           from dba_segments
          where owner = 'ИМЯ_СХЕМЫ'
            and segment_type = 'TABLE'
@@ -12,7 +12,7 @@ select t.table_name table_name,
   left join dba_indexes ti
     on ti.table_name = t.table_name
   left join (select segment_name index_name,
-                    ceil(sum(bytes) / #cc66cc;">1024) index_size
+                    round(sum(bytes) / 1024 / 1024) index_size
                from dba_segments
               where owner = 'ИМЯ_СХЕМЫ'
                 and segment_type = 'INDEX'
