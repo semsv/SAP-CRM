@@ -1,11 +1,11 @@
-CREATE OR REPLACE PACKAGE UBRR_SRC.ubrr_src_aud_tools
+CREATE OR REPLACE PACKAGE SRC.src_aud_tools
 IS
 
 procedure Write_Aud;
 
 END; -- Package spec
 /
-CREATE OR REPLACE PACKAGE BODY UBRR_SRC.ubrr_src_aud_tools
+CREATE OR REPLACE PACKAGE BODY SRC.src_aud_tools
 IS
 
 
