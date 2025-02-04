@@ -1,5 +1,5 @@
 -- Create table
-create table UBRR_SRC.SCHEMA_AUD
+create table SRC.SCHEMA_AUD
 (
   n_audactid    NUMBER,
   c_audoper     VARCHAR2(256),
